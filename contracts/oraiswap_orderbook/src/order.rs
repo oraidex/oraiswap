@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use crate::contract::WHITELIST_TRADER;
 use crate::orderbook::{Executor, Order, OrderBook, OrderWithFee};
 use crate::query::get_price_info_for_market_order;
 use crate::state::{
@@ -390,16 +391,21 @@ fn process_payment_list_orders(
                 amount: filled_ask,
             };
 
-            let reward_fee = calculate_fee(
-                commission_rate,
-                order.direction,
-                &mut trader_ask_asset,
-                reward,
-            )?;
-            order.reward_fee = reward_fee;
+            let bidder_addr = deps.api.addr_humanize(&order.bidder_addr)?;
+
+            if !WHITELIST_TRADER.query_hook(*deps, bidder_addr.to_string())? {
+                let reward_fee: Uint128 = calculate_fee(
+                    commission_rate,
+                    order.direction,
+                    &mut trader_ask_asset,
+                    reward,
+                )?;
+                order.reward_fee = reward_fee;
+            }
+
             if !trader_ask_asset.amount.is_zero() {
                 let trader_payment: Payment = Payment {
-                    address: deps.api.addr_humanize(&order.bidder_addr)?,
+                    address: bidder_addr,
                     asset: Asset {
                         info: trader_ask_asset.info.clone(),
                         amount: trader_ask_asset.amount,

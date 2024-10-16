@@ -28,3 +28,4 @@ oraiswap = { workspace = true }
 oraiswap-token = { workspace = true }
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 cw-utils = { workspace = true }
+cw-controllers = { workspace = true }

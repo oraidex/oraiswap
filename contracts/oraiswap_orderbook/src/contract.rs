@@ -19,6 +19,7 @@ use crate::query::{
 use crate::state::{
     init_last_order_id, read_config, read_orderbook, store_config, store_orderbook, validate_admin,
 };
+use cw_controllers::Hooks;
 
 use cw20::Cw20ReceiveMsg;
 use oraiswap::asset::{pair_key, Asset, AssetInfo};
@@ -33,6 +34,9 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // default commission rate = 0.1 %
 const DEFAULT_COMMISSION_RATE: &str = "0.001";
+
+/// Hooks controller for the base asset holding whitelist
+pub const WHITELIST_TRADER: Hooks = Hooks::new("whitelist_TRADER");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -252,6 +256,8 @@ pub fn execute(
                 ("token", &asset.to_string()),
             ]))
         }
+        ExecuteMsg::WhitelistTrader { trader } => execute_whitelist_trader(deps, info, trader),
+        ExecuteMsg::RemoveTrader { trader } => execute_remove_trader(deps, info, trader),
     }
 }
 
@@ -271,6 +277,42 @@ fn check_paused(deps: Deps, msg: &ExecuteMsg) -> Result<(), ContractError> {
         }
     }
     Ok(())
+}
+
+pub fn execute_whitelist_trader(
+    deps: DepsMut,
+    info: MessageInfo,
+    trader: Addr,
+) -> Result<Response, ContractError> {
+    let contract_info = read_config(deps.storage)?;
+    validate_admin(deps.api, &contract_info.admin, info.sender.as_str())?;
+
+    WHITELIST_TRADER
+        .add_hook(deps.storage, trader.clone())
+        .map_err(|error| StdError::generic_err(error.to_string()))?;
+
+    Ok(Response::new().add_attributes(vec![
+        ("action", "whitelist_trader"),
+        ("trader", trader.as_str()),
+    ]))
+}
+
+pub fn execute_remove_trader(
+    deps: DepsMut,
+    info: MessageInfo,
+    trader: Addr,
+) -> Result<Response, ContractError> {
+    let contract_info = read_config(deps.storage)?;
+    validate_admin(deps.api, &contract_info.admin, info.sender.as_str())?;
+
+    WHITELIST_TRADER
+        .remove_hook(deps.storage, trader.clone())
+        .map_err(|error| StdError::generic_err(error.to_string()))?;
+
+    Ok(Response::new().add_attributes(vec![
+        ("action", "remove_trader"),
+        ("trader", trader.as_str()),
+    ]))
 }
 
 pub fn execute_update_admin(
@@ -580,6 +622,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             slippage,
             offer_amount,
         )?),
+        QueryMsg::WhitelistedTraders {} => {
+            to_json_binary(&WHITELIST_TRADER.query_hooks(deps)?.hooks)
+        }
     }
 }
 

@@ -175,6 +175,121 @@ fn test_get_paid_and_quote_assets() {
 }
 
 #[test]
+fn test_whitelist_trader() {
+    let (mut app, orderbook_addr) = basic_fixture();
+    // case 1: try to whitelist trader failed => unauthorized
+
+    let update_msg = ExecuteMsg::WhitelistTrader {
+        trader: Addr::unchecked("trader_1"),
+    };
+    assert_eq!(
+        app.execute(
+            Addr::unchecked("theft"),
+            orderbook_addr.clone(),
+            &update_msg,
+            &[]
+        )
+        .is_err(),
+        true
+    );
+
+    // case 2: good case, admin should be able to whitelist trader
+    app.execute(
+        Addr::unchecked("addr0000"),
+        orderbook_addr.clone(),
+        &update_msg,
+        &[],
+    )
+    .unwrap();
+    let traders: Vec<String> = app
+        .query(orderbook_addr.clone(), &QueryMsg::WhitelistedTraders {})
+        .unwrap();
+    assert_eq!(traders, vec!["trader_1".to_string()]);
+
+    // add other trader
+    let update_msg = ExecuteMsg::WhitelistTrader {
+        trader: Addr::unchecked("trader_2"),
+    };
+    app.execute(
+        Addr::unchecked("addr0000"),
+        orderbook_addr.clone(),
+        &update_msg,
+        &[],
+    )
+    .unwrap();
+    let traders: Vec<String> = app
+        .query(orderbook_addr.clone(), &QueryMsg::WhitelistedTraders {})
+        .unwrap();
+    assert_eq!(
+        traders,
+        vec!["trader_1".to_string(), "trader_2".to_string()]
+    );
+}
+
+#[test]
+fn test_remove_trader() {
+    let (mut app, orderbook_addr) = basic_fixture();
+
+    let update_msg = ExecuteMsg::WhitelistTrader {
+        trader: Addr::unchecked("trader_1"),
+    };
+
+    app.execute(
+        Addr::unchecked("addr0000"),
+        orderbook_addr.clone(),
+        &update_msg,
+        &[],
+    )
+    .unwrap();
+
+    let update_msg = ExecuteMsg::WhitelistTrader {
+        trader: Addr::unchecked("trader_2"),
+    };
+    app.execute(
+        Addr::unchecked("addr0000"),
+        orderbook_addr.clone(),
+        &update_msg,
+        &[],
+    )
+    .unwrap();
+    let traders: Vec<String> = app
+        .query(orderbook_addr.clone(), &QueryMsg::WhitelistedTraders {})
+        .unwrap();
+    assert_eq!(
+        traders,
+        vec!["trader_1".to_string(), "trader_2".to_string()]
+    );
+
+    // remove failed, unauthorized
+    let update_msg = ExecuteMsg::RemoveTrader {
+        trader: Addr::unchecked("trader_1"),
+    };
+    assert_eq!(
+        app.execute(
+            Addr::unchecked("theft"),
+            orderbook_addr.clone(),
+            &update_msg,
+            &[]
+        )
+        .is_err(),
+        true
+    );
+
+    // remove successful
+    app.execute(
+        Addr::unchecked("addr0000"),
+        orderbook_addr.clone(),
+        &update_msg,
+        &[],
+    )
+    .unwrap();
+    let traders: Vec<String> = app
+        .query(orderbook_addr.clone(), &QueryMsg::WhitelistedTraders {})
+        .unwrap();
+    assert_eq!(traders, vec!["trader_2".to_string()]);
+}
+
+#[test]
 fn test_withdraw_token() {
     let (mut app, orderbook_addr) = basic_fixture();
     // case 1: try to withdraw tokens using non-admin addr => unauthorized
@@ -4707,6 +4822,244 @@ fn reward_to_executor_test() {
         Coin {
             denom: ORAI_DENOM.to_string(),
             amount: Uint128::from(1001208491u128),
+        },
+        Coin {
+            denom: USDT_DENOM.to_string(),
+            amount: Uint128::from(999797000u128),
+        },
+    ]
+    .to_vec();
+    assert_eq!(address0_balances, expected_balances,);
+    expected_balances = [
+        Coin {
+            denom: ORAI_DENOM.to_string(),
+            amount: Uint128::from(998790000u128),
+        },
+        Coin {
+            denom: USDT_DENOM.to_string(),
+            amount: Uint128::from(1000199800u128),
+        },
+    ]
+    .to_vec();
+    assert_eq!(address1_balances, expected_balances,);
+}
+
+#[test]
+fn whitelist_trader_with_zero_fee() {
+    let mut app = MockApp::new(&[
+        (
+            "addr0000",
+            &[
+                Coin {
+                    denom: ORAI_DENOM.to_string(),
+                    amount: Uint128::from(1000000000u128),
+                },
+                Coin {
+                    denom: USDT_DENOM.to_string(),
+                    amount: Uint128::from(1000000000u128),
+                },
+            ],
+        ),
+        (
+            "addr0001",
+            &[
+                Coin {
+                    denom: ORAI_DENOM.to_string(),
+                    amount: Uint128::from(1000000000u128),
+                },
+                Coin {
+                    denom: USDT_DENOM.to_string(),
+                    amount: Uint128::from(1000000000u128),
+                },
+            ],
+        ),
+    ]);
+
+    let msg = InstantiateMsg {
+        name: None,
+        version: None,
+        admin: None,
+        commission_rate: None,
+        operator: None,
+        reward_address: REWARD_ADDR.to_string(),
+    };
+    let code_id = app.upload(Box::new(create_entry_points_testing!(crate)));
+    let orderbook_addr = app
+        .instantiate(
+            code_id,
+            Addr::unchecked("addr0000"),
+            &msg,
+            &[],
+            "limit order",
+        )
+        .unwrap();
+
+    // Create pair [orai, usdt] for order book
+    let msg = ExecuteMsg::CreateOrderBookPair {
+        base_coin_info: AssetInfo::NativeToken {
+            denom: ORAI_DENOM.to_string(),
+        },
+        quote_coin_info: AssetInfo::NativeToken {
+            denom: USDT_DENOM.to_string(),
+        },
+        spread: Some(Decimal::percent(10)),
+        min_quote_coin_amount: Uint128::from(10000u128),
+        refund_threshold: None,
+        min_offer_to_fulfilled: None,
+        min_ask_to_fulfilled: None,
+    };
+
+    let _res = app.execute(
+        Addr::unchecked("addr0000"),
+        orderbook_addr.clone(),
+        &msg,
+        &[],
+    );
+
+    // whitelist trader
+    let msg = ExecuteMsg::WhitelistTrader {
+        trader: Addr::unchecked("addr0000"),
+    };
+    let _res = app.execute(
+        Addr::unchecked("addr0000"),
+        orderbook_addr.clone(),
+        &msg,
+        &[],
+    );
+
+    /* <----------------------------------- order 1 -----------------------------------> */
+    let msg = ExecuteMsg::SubmitOrder {
+        direction: OrderDirection::Buy,
+        assets: [
+            Asset {
+                info: AssetInfo::NativeToken {
+                    denom: USDT_DENOM.to_string(),
+                },
+                amount: Uint128::from(103000u128),
+            },
+            Asset {
+                info: AssetInfo::NativeToken {
+                    denom: ORAI_DENOM.to_string(),
+                },
+                amount: Uint128::from(618000u128),
+            },
+        ],
+    };
+
+    let _res = app
+        .execute(
+            Addr::unchecked("addr0000"),
+            orderbook_addr.clone(),
+            &msg,
+            &[Coin {
+                denom: USDT_DENOM.to_string(),
+                amount: Uint128::from(103000u128),
+            }],
+        )
+        .unwrap();
+
+    /* <----------------------------------- order 2 -----------------------------------> */
+    let msg = ExecuteMsg::SubmitOrder {
+        direction: OrderDirection::Buy,
+        assets: [
+            Asset {
+                info: AssetInfo::NativeToken {
+                    denom: ORAI_DENOM.to_string(),
+                },
+                amount: Uint128::from(610000u128),
+            },
+            Asset {
+                info: AssetInfo::NativeToken {
+                    denom: USDT_DENOM.to_string(),
+                },
+                amount: Uint128::from(100000u128),
+            },
+        ],
+    };
+
+    let _res = app
+        .execute(
+            Addr::unchecked("addr0000"),
+            orderbook_addr.clone(),
+            &msg,
+            &[Coin {
+                denom: USDT_DENOM.to_string(),
+                amount: Uint128::from(100000u128),
+            }],
+        )
+        .unwrap();
+
+    /* <----------------------------------- order 3 -----------------------------------> */
+    let msg = ExecuteMsg::SubmitOrder {
+        direction: OrderDirection::Sell,
+        assets: [
+            Asset {
+                info: AssetInfo::NativeToken {
+                    denom: USDT_DENOM.to_string(),
+                },
+                amount: Uint128::from(100000u128),
+            },
+            Asset {
+                info: AssetInfo::NativeToken {
+                    denom: ORAI_DENOM.to_string(),
+                },
+                amount: Uint128::from(600000u128),
+            },
+        ],
+    };
+
+    let _res = app
+        .execute(
+            Addr::unchecked("addr0001"),
+            orderbook_addr.clone(),
+            &msg,
+            &[Coin {
+                denom: ORAI_DENOM.to_string(),
+                amount: Uint128::from(600000u128),
+            }],
+        )
+        .unwrap();
+
+    /* <----------------------------------- order 4 -----------------------------------> */
+    let msg = ExecuteMsg::SubmitOrder {
+        direction: OrderDirection::Sell,
+        assets: [
+            Asset {
+                info: AssetInfo::NativeToken {
+                    denom: ORAI_DENOM.to_string(),
+                },
+                amount: Uint128::from(610000u128),
+            },
+            Asset {
+                info: AssetInfo::NativeToken {
+                    denom: USDT_DENOM.to_string(),
+                },
+                amount: Uint128::from(100000u128),
+            },
+        ],
+    };
+
+    let _res = app
+        .execute(
+            Addr::unchecked("addr0001"),
+            orderbook_addr.clone(),
+            &msg,
+            &[Coin {
+                denom: ORAI_DENOM.to_string(),
+                amount: Uint128::from(610000u128),
+            }],
+        )
+        .unwrap();
+
+    let address0_balances = app.query_all_balances(Addr::unchecked("addr0000")).unwrap();
+    let address1_balances = app.query_all_balances(Addr::unchecked("addr0001")).unwrap();
+    println!("round 0 - address0's balances: {:?}", address0_balances);
+    println!("round 0 - address1's balances: {:?}\n\n", address1_balances);
+
+    let mut expected_balances: Vec<Coin> = [
+        Coin {
+            denom: ORAI_DENOM.to_string(),
+            amount: Uint128::from(1001209700u128),
         },
         Coin {
             denom: USDT_DENOM.to_string(),

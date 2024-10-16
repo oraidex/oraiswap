@@ -146,6 +146,12 @@ pub enum ExecuteMsg {
     WithdrawToken {
         asset: Asset,
     },
+    WhitelistTrader {
+        trader: Addr,
+    },
+    RemoveTrader {
+        trader: Addr,
+    },
 }
 
 #[cw_serde]
@@ -222,6 +228,8 @@ pub enum QueryMsg {
         slippage: Option<Decimal>,
         offer_amount: Uint128,
     },
+    #[returns(Vec<String>)]
+    WhitelistedTraders {},
 }
 
 #[cw_serde]
