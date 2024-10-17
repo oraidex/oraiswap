@@ -26,7 +26,11 @@ pub enum ExecuteMsg {
 }
 
 #[cw_serde]
-pub struct MigrateMsg {}
+pub struct MigrateMsg {
+    pub owner: String,
+    pub staking_contract: String,
+    pub distribution_interval: u64,
+}
 
 #[cw_serde]
 #[derive(QueryResponses)]

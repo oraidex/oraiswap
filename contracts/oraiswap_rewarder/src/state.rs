@@ -2,8 +2,8 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{CanonicalAddr, StdResult, Storage};
 use cosmwasm_storage::{singleton, singleton_read, Bucket, ReadonlyBucket};
 
-static KEY_CONFIG: &[u8] = b"config";
-static KEY_LAST_DISTRIBUTED: &[u8] = b"last_distributed";
+static KEY_CONFIG: &[u8] = b"config_std_1_5";
+static KEY_LAST_DISTRIBUTED: &[u8] = b"last_distributed_std_1_5";
 
 #[cw_serde]
 pub struct Config {

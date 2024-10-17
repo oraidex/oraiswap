@@ -1,9 +1,10 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, QuerierWrapper, Response,
-    StdError, StdResult, Uint128, WasmMsg,
+    to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, QuerierWrapper,
+    Response, StdError, StdResult, Uint128, WasmMsg,
 };
 
+use crate::migration::v0132::migrate_0132_to_15;
 use crate::state::{
     read_config, read_last_distributed, store_config, store_last_distributed, Config,
 };
@@ -57,7 +58,8 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> StdResult<Response> {
+pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> StdResult<Response> {
+    migrate_0132_to_15(deps.storage, deps.api, msg, env.block.time.seconds())?;
     Ok(Response::default())
 }
 
