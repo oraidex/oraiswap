@@ -1,4 +1,5 @@
-use cosmwasm_std::entry_point;
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::{entry_point, Addr};
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 
 use cw20::Cw20ExecuteMsg;
@@ -8,8 +9,16 @@ use cw20_base::{
         execute as cw20_execute, instantiate as cw20_instantiate, migrate as cw20_migrate,
         query as cw20_query,
     },
-    msg::{InstantiateMsg, MigrateMsg, QueryMsg},
+    msg::{InstantiateMsg, MigrateMsg as Cw20MigrateMsg, QueryMsg},
 };
+use cw_storage_plus::Map;
+
+pub const BLACKLIST: Map<Addr, bool> = Map::new("black_list");
+
+#[cw_serde]
+pub struct MigrateMsg {
+    pub addr: Vec<Addr>,
+}
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -28,6 +37,15 @@ pub fn execute(
     info: MessageInfo,
     msg: Cw20ExecuteMsg,
 ) -> Result<Response, ContractError> {
+    let is_black_list = BLACKLIST
+        .may_load(deps.storage, info.sender.clone())
+        .unwrap_or_default();
+    if let Some(is_black_list) = is_black_list {
+        if is_black_list {
+            return Err(ContractError::Unauthorized {});
+        }
+    }
+
     cw20_execute(deps, env, info, msg)
 }
 
@@ -38,7 +56,11 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
-    cw20_migrate(deps, env, msg)
+    for addr in msg.addr {
+        BLACKLIST.save(deps.storage, addr, &true)?;
+    }
+    let cw20_migrate_msg = Cw20MigrateMsg {};
+    cw20_migrate(deps, env, cw20_migrate_msg)
 }
 
 #[test]

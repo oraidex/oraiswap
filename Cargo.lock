@@ -1455,6 +1455,7 @@ version = "0.2.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
+ "cw-storage-plus 1.2.0",
  "cw20",
  "cw20-base",
  "oraiswap",

@@ -2,7 +2,7 @@
 name = "oraiswap-token"
 version = { workspace = true }
 authors = { workspace = true }
-edition ={ workspace = true }
+edition = { workspace = true }
 license = { workspace = true }
 repository = { workspace = true }
 homepage = { workspace = true }
@@ -24,8 +24,4 @@ cosmwasm-std = { workspace = true }
 thiserror = { workspace = true }
 oraiswap = { workspace = true }
 cosmwasm-schema = { workspace = true }
-
-
-
-
-
+cw-storage-plus = { workspace = true }
