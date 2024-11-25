@@ -52,7 +52,6 @@ fn provide_liquidity_and_change_obtc_to_native_btc() {
         )
         .unwrap();
     let owner = Addr::unchecked("owner");
-    let receiver = Addr::unchecked("receiver");
     let obtc_addr = app.get_token_addr("obtc").unwrap();
     let msg = InstantiateMsg {
         oracle_addr: oracle_addr.clone(),
@@ -66,7 +65,7 @@ fn provide_liquidity_and_change_obtc_to_native_btc() {
         ],
         token_code_id: app.token_id(),
         commission_rate: None,
-        admin: None,
+        admin: Some(owner.clone()),
     };
     // we can just call .unwrap() to assert this was a success
     let code_id = app.upload(Box::new(
@@ -77,6 +76,7 @@ fn provide_liquidity_and_change_obtc_to_native_btc() {
     let pair_addr = app
         .instantiate(code_id, owner.clone(), &msg, &[], "pair")
         .unwrap();
+
     // set allowance
     app.execute(
         Addr::unchecked(MOCK_CONTRACT_ADDR),
@@ -146,10 +146,14 @@ fn provide_liquidity_and_change_obtc_to_native_btc() {
             pair_addr.clone(),
             &MigrateMsg {
                 admin: None,
-                replace_asset: Some(AssetInfo::NativeToken {
-                    denom: "native_btc".to_string(),
-                }),
-                replace_index: Some(1),
+                asset_infos: Some([
+                    AssetInfo::NativeToken {
+                        denom: ORAI_DENOM.to_string(),
+                    },
+                    AssetInfo::NativeToken {
+                        denom: "native_btc".to_string(),
+                    },
+                ]),
             },
             new_code_id,
         )
@@ -175,6 +179,25 @@ fn provide_liquidity_and_change_obtc_to_native_btc() {
         )
         .unwrap();
     assert_eq!(balance, Uint128::new(0));
+    // enable whitelist
+    app.execute(
+        owner.clone(),
+        pair_addr.clone(),
+        &ExecuteMsg::EnableWhitelist { status: true },
+        &[],
+    )
+    .unwrap();
+    // set whitelist withdraw lp
+    app.execute(
+        owner.clone(),
+        pair_addr.clone(),
+        &ExecuteMsg::RegisterWithdrawLp {
+            providers: vec![Addr::unchecked(MOCK_CONTRACT_ADDR)],
+        },
+        &[],
+    )
+    .unwrap();
+
     let res = app
         .execute(
             pair_info.info.liquidity_token.into(),

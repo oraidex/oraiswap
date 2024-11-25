@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 
 use crate::{
-    asset::{Asset, AssetInfo, PairInfo},
+    asset::{Asset, AssetInfo, PairInfo, PairInfoRaw},
     error::ContractError,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
@@ -57,6 +57,12 @@ pub enum ExecuteMsg {
     // remove trader from whitelist
     DeregisterTrader {
         traders: Vec<Addr>,
+    },
+    RegisterWithdrawLp {
+        providers: Vec<Addr>,
+    },
+    DeregisterWithdrawLp {
+        providers: Vec<Addr>,
     },
 }
 
@@ -130,8 +136,7 @@ pub struct ReverseSimulationResponse {
 #[cw_serde]
 pub struct MigrateMsg {
     pub admin: Option<String>,
-    pub replace_asset: Option<AssetInfo>,
-    pub replace_index: Option<u8>,
+    pub asset_infos: Option<[AssetInfo; 2]>,
 }
 
 pub fn compute_swap(
