@@ -324,6 +324,7 @@ pub fn withdraw_liquidity(
     sender: Addr,
     amount: Uint128,
 ) -> Result<Response, ContractError> {
+    println!("withdraw_liquidity: {:?}", amount);
     // check pool is only open for whitelisted trader
     assert_is_open_for_whitelisted_trader(deps.as_ref(), sender.clone())?;
 
@@ -367,6 +368,7 @@ pub fn withdraw_liquidity(
         }
         .into(),
     ];
+    println!("messages: {:?}", messages);
 
     // update pool info
     Ok(Response::new().add_messages(messages).add_attributes(vec![
@@ -751,6 +753,13 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
     if let Some(admin) = msg.admin {
         let admin_canonical = deps.api.addr_canonicalize(&admin)?;
         ADMIN.save(deps.storage, &admin_canonical)?;
+    }
+    if let Some(replace_asset) = msg.replace_asset {
+        let replace_asset = replace_asset.to_raw(deps.api)?;
+        let replace_index = msg.replace_index.unwrap();
+        let mut pair_info: PairInfoRaw = PAIR_INFO.load(deps.storage)?;
+        pair_info.asset_infos[replace_index as usize] = replace_asset;
+        PAIR_INFO.save(deps.storage, &pair_info)?;
     }
     Ok(Response::default())
 }

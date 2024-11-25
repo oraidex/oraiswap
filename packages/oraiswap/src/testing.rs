@@ -100,7 +100,14 @@ impl MockApp {
     ) -> Result<Addr, String> {
         let contract_addr = self
             .app
-            .instantiate_contract(code_id, sender, init_msg, send_funds, label, None)
+            .instantiate_contract(
+                code_id,
+                sender.clone(),
+                init_msg,
+                send_funds,
+                label,
+                Some(sender.into_string()),
+            )
             .map_err(|err| err.to_string())?;
         self.app.update_block(next_block);
         Ok(contract_addr)
@@ -116,6 +123,23 @@ impl MockApp {
         let response = self
             .app
             .execute_contract(sender, contract_addr, msg, send_funds)
+            .map_err(|err| err.to_string())?;
+
+        self.app.update_block(next_block);
+
+        Ok(response)
+    }
+
+    pub fn migrate<T: Serialize + std::fmt::Debug>(
+        &mut self,
+        sender: Addr,
+        contract_addr: Addr,
+        msg: &T,
+        new_code_id: u64,
+    ) -> Result<AppResponse, String> {
+        let response = self
+            .app
+            .migrate_contract(sender, contract_addr, msg, new_code_id)
             .map_err(|err| err.to_string())?;
 
         self.app.update_block(next_block);

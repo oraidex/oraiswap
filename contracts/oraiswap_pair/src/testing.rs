@@ -3,8 +3,216 @@ use cosmwasm_std::{attr, to_binary, Addr, Coin, Decimal, Uint128};
 use cw20::Cw20ReceiveMsg;
 use oraiswap::asset::{Asset, AssetInfo, ORAI_DENOM};
 use oraiswap::create_entry_points_testing;
-use oraiswap::pair::{Cw20HookMsg, ExecuteMsg, InstantiateMsg, PairResponse};
-use oraiswap::testing::{MockApp, ATOM_DENOM};
+use oraiswap::pair::{Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg, PairResponse};
+use oraiswap::testing::{MockApp, APP_OWNER, ATOM_DENOM};
+
+#[test]
+fn provide_liquidity_and_change_obtc_to_native_btc() {
+    let mut app = MockApp::new(&[(
+        &MOCK_CONTRACT_ADDR.to_string(),
+        &[
+            Coin {
+                denom: ORAI_DENOM.to_string(),
+                amount: Uint128::from(200u128),
+            },
+            Coin {
+                denom: "native_btc".to_string(),
+                amount: Uint128::from(200u128),
+            },
+        ],
+    )]);
+
+    app.set_oracle_contract(Box::new(create_entry_points_testing!(oraiswap_oracle)));
+
+    app.set_token_contract(Box::new(create_entry_points_testing!(oraiswap_token)));
+
+    app.set_token_balances(&[(
+        &"obtc".to_string(),
+        &[(&MOCK_CONTRACT_ADDR.to_string(), &Uint128::from(1000u128))],
+    )]);
+
+    let _ = app
+        .execute(
+            Addr::unchecked(APP_OWNER),
+            app.oracle_addr.clone(),
+            &oraiswap::oracle::ExecuteMsg::UpdateTaxRate {
+                rate: Decimal::zero(),
+            },
+            &[],
+        )
+        .unwrap();
+
+    let _ = app
+        .execute(
+            Addr::unchecked(APP_OWNER),
+            app.oracle_addr.clone(),
+            &oraiswap::oracle::ExecuteMsg::UpdateTaxCap {
+                denom: "native_btc".to_string(),
+                cap: Uint128::from(0u128),
+            },
+            &[],
+        )
+        .unwrap();
+
+    let owner = Addr::unchecked("owner");
+    let receiver = Addr::unchecked("receiver");
+    let obtc_addr = app.get_token_addr("obtc").unwrap();
+
+    let msg = InstantiateMsg {
+        oracle_addr: app.oracle_addr.clone(),
+        asset_infos: [
+            AssetInfo::NativeToken {
+                denom: ORAI_DENOM.to_string(),
+            },
+            AssetInfo::Token {
+                contract_addr: obtc_addr.clone(),
+            },
+        ],
+        token_code_id: app.token_id,
+        commission_rate: None,
+        admin: None,
+    };
+
+    // we can just call .unwrap() to assert this was a success
+    let code_id = app.upload(Box::new(
+        create_entry_points_testing!(crate)
+            .with_migrate(crate::contract::migrate)
+            .with_reply(crate::contract::reply),
+    ));
+
+    let pair_addr = app
+        .instantiate(code_id, owner.clone(), &msg, &[], "pair")
+        .unwrap();
+
+    // set allowance
+    app.execute(
+        Addr::unchecked(MOCK_CONTRACT_ADDR),
+        obtc_addr.clone(),
+        &cw20::Cw20ExecuteMsg::IncreaseAllowance {
+            spender: pair_addr.to_string(),
+            amount: Uint128::from(100u128),
+            expires: None,
+        },
+        &[],
+    )
+    .unwrap();
+
+    // successfully provide liquidity for the exist pool
+    let msg = ExecuteMsg::ProvideLiquidity {
+        assets: [
+            Asset {
+                info: AssetInfo::NativeToken {
+                    denom: ORAI_DENOM.to_string(),
+                },
+                amount: Uint128::from(100u128),
+            },
+            Asset {
+                info: AssetInfo::Token {
+                    contract_addr: obtc_addr.clone(),
+                },
+                amount: Uint128::from(100u128),
+            },
+        ],
+        slippage_tolerance: None,
+        receiver: Some(pair_addr.clone()),
+    };
+
+    let res = app
+        .execute(
+            Addr::unchecked(MOCK_CONTRACT_ADDR),
+            pair_addr.clone(),
+            &msg,
+            &[
+                Coin {
+                    denom: ORAI_DENOM.to_string(),
+                    amount: Uint128::from(100u128),
+                },
+                Coin {
+                    denom: "native_btc".to_string(),
+                    amount: Uint128::from(200u128),
+                },
+            ],
+        )
+        .unwrap();
+    println!("{:?}", res);
+
+    let receiver_obtc_balance: cw20::BalanceResponse = app
+        .query(
+            Addr::unchecked("contract3").clone(),
+            &cw20::Cw20QueryMsg::Balance {
+                address: pair_addr.clone().to_string(),
+            },
+        )
+        .unwrap();
+    println!("{:?}", receiver_obtc_balance);
+
+    let new_code_id = app.upload(Box::new(
+        create_entry_points_testing!(crate)
+            .with_migrate(crate::contract::migrate)
+            .with_reply(crate::contract::reply),
+    ));
+    let res = app
+        .migrate(
+            owner.clone(),
+            pair_addr.clone(),
+            &MigrateMsg {
+                admin: None,
+                replace_asset: Some(AssetInfo::NativeToken {
+                    denom: "native_btc".to_string(),
+                }),
+                replace_index: Some(1),
+            },
+            new_code_id,
+        )
+        .unwrap();
+    println!("{:?}", res);
+
+    let pair_info: PairResponse = app
+        .query(pair_addr.clone(), &oraiswap::pair::QueryMsg::Pair {})
+        .unwrap();
+    println!("{:?}", pair_info);
+
+    let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
+        sender: MOCK_CONTRACT_ADDR.into(),
+        msg: to_binary(&Cw20HookMsg::WithdrawLiquidity {}).unwrap(),
+        amount: Uint128::from(100u128),
+    });
+
+    let balance = app
+        .query_balance(Addr::unchecked(MOCK_CONTRACT_ADDR), "orai".to_string())
+        .unwrap();
+    assert_eq!(balance, Uint128::new(100));
+    let balance = app
+        .query_balance(
+            Addr::unchecked(MOCK_CONTRACT_ADDR),
+            "native_btc".to_string(),
+        )
+        .unwrap();
+    assert_eq!(balance, Uint128::new(0));
+
+    let res = app
+        .execute(
+            pair_info.info.liquidity_token.into(),
+            pair_addr.clone(),
+            &msg,
+            &[],
+        )
+        .map_err(|e| e.to_string());
+
+    println!("{:?}", res);
+
+    let balance = app
+        .query_balance(Addr::unchecked(MOCK_CONTRACT_ADDR), "orai".to_string())
+        .unwrap();
+    assert_eq!(balance, Uint128::new(200));
+    let balance = app
+        .query_balance(
+            Addr::unchecked(MOCK_CONTRACT_ADDR),
+            "native_btc".to_string(),
+        )
+        .unwrap();
+    assert_eq!(balance, Uint128::new(200));
+}
 
 #[test]
 fn provide_liquidity_both_native() {
@@ -95,6 +303,7 @@ fn provide_liquidity_both_native() {
             ],
         )
         .unwrap();
+    let attributes = res.custom_attrs(1);
 
     println!("{:?}", res);
 }
@@ -367,6 +576,7 @@ fn withdraw_liquidity() {
             }],
         )
         .unwrap();
+    println!("{:?}", _res);
 
     // withdraw liquidity
     let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {

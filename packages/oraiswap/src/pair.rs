@@ -130,6 +130,8 @@ pub struct ReverseSimulationResponse {
 #[cw_serde]
 pub struct MigrateMsg {
     pub admin: Option<String>,
+    pub replace_asset: Option<AssetInfo>,
+    pub replace_index: Option<u8>,
 }
 
 pub fn compute_swap(
