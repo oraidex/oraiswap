@@ -1,4 +1,4 @@
-use crate::state::{ADMIN, PAIR_INFO, WHITELISTED, WHITELISTED_TRADERS};
+use crate::state::{ADMIN, PAIR_INFO, WHITELISTED, WHITELISTED_TRADERS, WHITELISTED_WITHDRAW_LPS};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 
@@ -11,7 +11,7 @@ use cosmwasm_std::{
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
 use cw20_base::msg::InstantiateMsg as TokenInstantiateMsg;
 use integer_sqrt::IntegerSquareRoot;
-use oraiswap::asset::{Asset, AssetInfo, PairInfoRaw};
+use oraiswap::asset::{Asset, AssetInfo, AssetInfoRaw, PairInfoRaw};
 use oraiswap::error::ContractError;
 use oraiswap::oracle::OracleContract;
 use oraiswap::pair::{
@@ -129,6 +129,12 @@ pub fn execute(
         }
         ExecuteMsg::RegisterTrader { traders } => execute_register_traders(deps, info, traders),
         ExecuteMsg::DeregisterTrader { traders } => execute_deregister_traders(deps, info, traders),
+        ExecuteMsg::RegisterWithdrawLp { providers } => {
+            execute_register_withdraw_lps(deps, info, providers)
+        }
+        ExecuteMsg::DeregisterWithdrawLp { providers } => {
+            execute_deregister_withdraw_lps(deps, info, providers)
+        }
     }
 }
 
@@ -324,8 +330,8 @@ pub fn withdraw_liquidity(
     sender: Addr,
     amount: Uint128,
 ) -> Result<Response, ContractError> {
-    // check pool is only open for whitelisted trader
-    assert_is_open_for_whitelisted_trader(deps.as_ref(), sender.clone())?;
+    // check pool is only open for whitelisted provider
+    assert_is_open_for_whitelisted_withdraw_lp(deps.as_ref(), sender.clone())?;
 
     let pair_info: PairInfoRaw = PAIR_INFO.load(deps.storage)?;
     let liquidity_addr = deps.api.addr_humanize(&pair_info.liquidity_token)?;
@@ -511,6 +517,38 @@ fn execute_deregister_traders(
     Ok(Response::new().add_attributes(vec![("action", "deregister_trader")]))
 }
 
+fn execute_register_withdraw_lps(
+    deps: DepsMut,
+    info: MessageInfo,
+    providers: Vec<Addr>,
+) -> Result<Response, ContractError> {
+    // check permission
+    assert_admin(deps.as_ref(), info.sender.to_string())?;
+
+    // add traders to whitelist
+    for provider in &providers {
+        WHITELISTED_WITHDRAW_LPS.save(deps.storage, provider, &true)?;
+    }
+
+    Ok(Response::new().add_attributes(vec![("action", "register_whitelist_lp")]))
+}
+
+fn execute_deregister_withdraw_lps(
+    deps: DepsMut,
+    info: MessageInfo,
+    providers: Vec<Addr>,
+) -> Result<Response, ContractError> {
+    // check permission
+    assert_admin(deps.as_ref(), info.sender.to_string())?;
+
+    // add traders to whitelist
+    for provider in &providers {
+        WHITELISTED_WITHDRAW_LPS.save(deps.storage, provider, &false)?;
+    }
+
+    Ok(Response::new().add_attributes(vec![("action", "deregister_whitelist_lp")]))
+}
+
 fn assert_admin(deps: Deps, sender: String) -> Result<(), ContractError> {
     let admin = ADMIN.may_load(deps.storage)?;
 
@@ -544,6 +582,36 @@ fn assert_is_open_for_whitelisted_trader(deps: Deps, trader: Addr) -> Result<(),
 
     Ok(())
 }
+
+fn assert_is_open_for_whitelisted_withdraw_lp(
+    deps: Deps,
+    provider: Addr,
+) -> Result<(), ContractError> {
+    let is_whitelisted = WHITELISTED.may_load(deps.storage)?.unwrap_or(false);
+
+    if !is_whitelisted {
+        return Ok(());
+    }
+
+    let provider_whitelisted = WHITELISTED_WITHDRAW_LPS
+        .may_load(deps.storage, &provider)?
+        .unwrap_or(false);
+
+    let trader_whitelisted = WHITELISTED_TRADERS
+        .may_load(deps.storage, &provider)?
+        .unwrap_or(false);
+
+    if provider_whitelisted {
+        return Ok(());
+    }
+
+    if trader_whitelisted {
+        return Ok(());
+    }
+
+    Err(ContractError::PoolWhitelisted {})
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
@@ -751,6 +819,18 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
     if let Some(admin) = msg.admin {
         let admin_canonical = deps.api.addr_canonicalize(&admin)?;
         ADMIN.save(deps.storage, &admin_canonical)?;
+    }
+    if let Some(asset_infos) = msg.asset_infos {
+        let mut pair_info = PAIR_INFO.load(deps.storage)?;
+        let asset_infos_raw: [AssetInfoRaw; 2] = [
+            asset_infos[0].to_raw(deps.api).unwrap(),
+            asset_infos[1]
+                .to_raw(deps.api)
+                .map_err(ContractError::Std)
+                .unwrap(),
+        ];
+        pair_info.asset_infos = asset_infos_raw;
+        PAIR_INFO.save(deps.storage, &pair_info)?;
     }
     Ok(Response::default())
 }

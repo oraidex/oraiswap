@@ -8,10 +8,11 @@ pub const PAIR_INFO: Item<PairInfoRaw> = Item::new("\u{0}\u{9}pair_info");
 pub const ADMIN: Item<CanonicalAddr> = Item::new("\u{0}\u{5}admin");
 pub const WHITELISTED: Item<bool> = Item::new("\u{0}\u{11}whitelisted");
 pub const WHITELISTED_TRADERS: Map<&Addr, bool> = Map::new("\u{0}\u{19}whitelisted_traders");
+pub const WHITELISTED_WITHDRAW_LPS: Map<&Addr, bool> =
+    Map::new("\u{0}\u{20}whitelisted_withdraw_lp");
 
 #[cfg(test)]
 mod test {
-
     use super::*;
 
     use cosmwasm_std::testing::mock_dependencies;
