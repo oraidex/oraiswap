@@ -3,55 +3,53 @@ resolver = '2'
 
 members = ["packages/*", "contracts/*"]
 
-
 [workspace.package]
-version = "0.2.0"
 authors = ["Terraform Labs, PTE.", "Oraichain Labs"]
-edition = "2021"
-license = "MIT"
-repository = "https://github.com/oraichain/oraiswap.git"
-homepage = "https://orai.io"
 documentation = "https://github.com/oraichain/oraiswap.git"
+edition = "2021"
 exclude = [
   # Those files are rust-optimizer artifacts. You might want to commit them for convenience but they should not be part of the source code publication.
   "contract.wasm",
   "hash.txt",
 ]
+homepage = "https://orai.io"
+license = "MIT"
+repository = "https://github.com/oraichain/oraiswap.git"
+version = "0.2.0"
 
 [workspace.dependencies]
-cosmwasm-std = { version = "1.5.0" }
-cosmwasm-schema = { version = "1.5.0" }
-cosmwasm-storage = { version = "1.5.0" }
-cosmwasm-vm = { version = "1.5.0" }
+cosmwasm-schema = {version = "1.5.0"}
+cosmwasm-std = {version = "1.5.0"}
+cosmwasm-storage = {version = "1.5.0"}
+cosmwasm-vm = {version = "1.5.0"}
 
 thiserror = "1.0.26"
 
-cw2 = { version = "1.0.1" }
-cw20 = { version = "1.0.1" }
-cw20-base = { version = "1.0.1" }
-cw-storage-plus = { version = "1.0.1" }
-cw-utils = "0.16.0"
 cw-controllers = "1.0.1"
+cw-storage-plus = {version = "1.0.1"}
+cw-utils = "0.16.0"
+cw2 = {version = "1.0.1"}
+cw20 = {version = "1.0.1"}
+cw20-base = {version = "1.0.1"}
 
-oraiswap = { path = "./packages/oraiswap" }
-oraiswap-oracle = { path = "./contracts/oraiswap_oracle" }
-oraiswap-token = { path = "./contracts/oraiswap_token" }
-oraiswap-pair = { path = "./contracts/oraiswap_pair" }
-oraiswap-factory = { path = "./contracts/oraiswap_factory" }
-oraiswap-router = { path = "./contracts/oraiswap_router" }
-oraiswap-v3 = { git = "https://github.com/oraichain/oraiswap-v3.git", rev = "7f2b8ac", features = [
+cosmwasm-testing-util = {git = "https://github.com/oraichain/cosmwasm-testing-util.git", rev = "c30f9e7"}
+oraiswap = {path = "./packages/oraiswap"}
+oraiswap-factory = {path = "./contracts/oraiswap_factory"}
+oraiswap-oracle = {path = "./contracts/oraiswap_oracle"}
+oraiswap-pair = {path = "./contracts/oraiswap_pair"}
+oraiswap-router = {path = "./contracts/oraiswap_router"}
+oraiswap-token = {path = "./contracts/oraiswap_token"}
+oraiswap-v3 = {git = "https://github.com/oraichain/oraiswap-v3.git", rev = "7f2b8ac", features = [
   "library",
-] }
-
-cosmwasm-testing-util = { git = "https://github.com/oraichain/cosmwasm-testing-util.git", rev = "1b9c412" }
+]}
 
 [profile.release]
-opt-level = 3
+codegen-units = 1
 debug = false
 debug-assertions = false
-codegen-units = 1
 incremental = false
-rpath = false
 lto = true
+opt-level = 3
 overflow-checks = true
 panic = 'abort'
+rpath = false

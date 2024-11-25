@@ -752,5 +752,12 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
         let admin_canonical = deps.api.addr_canonicalize(&admin)?;
         ADMIN.save(deps.storage, &admin_canonical)?;
     }
+    if let Some(replace_asset) = msg.replace_asset {
+        let replace_asset = replace_asset.to_raw(deps.api)?;
+        let replace_index = msg.replace_index.unwrap();
+        let mut pair_info: PairInfoRaw = PAIR_INFO.load(deps.storage)?;
+        pair_info.asset_infos[replace_index as usize] = replace_asset;
+        PAIR_INFO.save(deps.storage, &pair_info)?;
+    }
     Ok(Response::default())
 }
