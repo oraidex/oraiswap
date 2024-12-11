@@ -10,6 +10,7 @@ pub const WHITELISTED: Item<bool> = Item::new("\u{0}\u{11}whitelisted");
 pub const WHITELISTED_TRADERS: Map<&Addr, bool> = Map::new("\u{0}\u{19}whitelisted_traders");
 pub const WHITELISTED_WITHDRAW_LPS: Map<&Addr, bool> =
     Map::new("\u{0}\u{20}whitelisted_withdraw_lp");
+pub const OPERATOR: Item<CanonicalAddr> = Item::new("\u{0}\u{8}operator");
 
 #[cfg(test)]
 mod test {
@@ -19,7 +20,7 @@ mod test {
     use cosmwasm_std::{Api, StdResult, Storage};
     use cosmwasm_storage::{singleton, singleton_read};
     use oraiswap::asset::AssetInfoRaw;
-    use oraiswap::pair::DEFAULT_COMMISSION_RATE;
+    use oraiswap::pair::{DEFAULT_COMMISSION_RATE, DEFAULT_OPERATOR_FEE};
     const KEY_PAIR_INFO: &[u8] = b"pair_info";
 
     pub fn store_pair_info(storage: &mut dyn Storage, config: &PairInfoRaw) -> StdResult<()> {
@@ -47,6 +48,7 @@ mod test {
                 contract_addr: deps.api.addr_canonicalize("pair0000").unwrap(),
                 liquidity_token: deps.api.addr_canonicalize("liquidity0000").unwrap(),
                 commission_rate: DEFAULT_COMMISSION_RATE.to_string(),
+                operator_fee: DEFAULT_OPERATOR_FEE.to_string(),
             },
         )
         .unwrap();

@@ -17,7 +17,9 @@ use oraiswap::asset::{pair_key, AssetInfo, PairInfo, PairInfoRaw};
 use oraiswap::factory::{
     ConfigResponse, ExecuteMsg, InstantiateMsg, MigrateMsg, PairsResponse, QueryMsg,
 };
-use oraiswap::pair::{InstantiateMsg as PairInstantiateMsg, DEFAULT_COMMISSION_RATE};
+use oraiswap::pair::{
+    InstantiateMsg as PairInstantiateMsg, DEFAULT_COMMISSION_RATE, DEFAULT_OPERATOR_FEE,
+};
 
 const INSTANTIATE_REPLY_ID: u64 = 1;
 
@@ -36,6 +38,7 @@ pub fn instantiate(
         commission_rate: msg
             .commission_rate
             .unwrap_or(DEFAULT_COMMISSION_RATE.to_string()),
+        operator_fee: msg.operator_fee.unwrap_or(DEFAULT_OPERATOR_FEE.to_string()),
     };
 
     CONFIG.save(deps.storage, &config)?;
@@ -59,7 +62,8 @@ pub fn execute(
         ExecuteMsg::CreatePair {
             asset_infos,
             pair_admin,
-        } => execute_create_pair(deps, env, info, asset_infos, pair_admin),
+            operator,
+        } => execute_create_pair(deps, env, info, asset_infos, pair_admin, operator),
         ExecuteMsg::AddPair { pair_info } => execute_add_pair_manually(deps, env, info, pair_info),
         ExecuteMsg::MigrateContract {
             contract_addr,
@@ -134,6 +138,7 @@ pub fn execute_create_pair(
     _info: MessageInfo,
     asset_infos: [AssetInfo; 2],
     pair_admin: Option<String>,
+    operator: Option<String>,
 ) -> Result<Response, ContractError> {
     let config: Config = CONFIG.load(deps.storage)?;
     let raw_infos = [
@@ -157,9 +162,12 @@ pub fn execute_create_pair(
             contract_addr: CanonicalAddr::from(vec![]),
             asset_infos: raw_infos,
             commission_rate: config.commission_rate.clone(),
+            operator_fee: config.operator_fee.clone(),
         },
     )?;
     let pair_admin = pair_admin.unwrap_or(env.contract.address.to_string());
+
+    let operator_addr = operator.map(|op| deps.api.addr_validate(&op)).transpose()?;
 
     Ok(Response::new()
         .add_submessage(SubMsg::reply_on_success(
@@ -174,6 +182,8 @@ pub fn execute_create_pair(
                     token_code_id: config.token_code_id,
                     commission_rate: Some(config.commission_rate),
                     admin: Some(deps.api.addr_validate(&pair_admin)?),
+                    operator_fee: Some(config.operator_fee),
+                    operator: operator_addr,
                 })?,
             },
             INSTANTIATE_REPLY_ID,
@@ -222,6 +232,7 @@ pub fn execute_add_pair_manually(
                 .addr_canonicalize(pair_info.contract_addr.as_str())?,
             asset_infos: raw_infos,
             commission_rate: pair_info.commission_rate.clone(),
+            operator_fee: pair_info.operator_fee,
         },
     )?;
 

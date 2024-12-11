@@ -315,7 +315,9 @@ pub struct PairInfo {
     pub liquidity_token: Addr,
 
     pub oracle_addr: Addr,
-    pub commission_rate: String,
+    pub commission_rate: String, // commission rate as swap fee, and will ve devided for liquidity provider
+    #[serde(default)]
+    pub operator_fee: String, // operator fee send to system
 }
 
 #[cw_serde]
@@ -327,6 +329,8 @@ pub struct PairInfoRaw {
     // oracle contract
     pub oracle_addr: CanonicalAddr,
     pub commission_rate: String,
+    #[serde(default)]
+    pub operator_fee: String,
 }
 
 impl PairInfoRaw {
@@ -340,6 +344,7 @@ impl PairInfoRaw {
                 self.asset_infos[1].to_normal(api)?,
             ],
             commission_rate: self.commission_rate.clone(),
+            operator_fee: self.operator_fee.clone(),
         })
     }
 

@@ -698,7 +698,7 @@ fn simulate_mixed_swap() {
 
     let res: SimulateSwapOperationsResponse = app.query(router_addr, &msg).unwrap();
 
-    assert_eq!(res.amount, Uint128::new(99599));
+    assert_eq!(res.amount, Uint128::new(99500));
 }
 
 #[test]
@@ -918,7 +918,7 @@ fn execute_mixed_swap_operations() {
             },
             Coin {
                 denom: token_x_name.to_string(),
-                amount: Uint128::new(998499249564)
+                amount: Uint128::new(998499249465)
             }
         ]
     );
@@ -1089,7 +1089,7 @@ fn test_affiliates() {
         vec![
             Coin {
                 denom: token_y_name.to_string(),
-                amount: Uint128::new(996)
+                amount: Uint128::new(995)
             },
             Coin {
                 denom: token_x_name.to_string(),
@@ -1104,7 +1104,7 @@ fn test_affiliates() {
         vec![
             Coin {
                 denom: token_y_name.to_string(),
-                amount: Uint128::new(9960)
+                amount: Uint128::new(9950)
             },
             Coin {
                 denom: token_x_name.to_string(),
@@ -1155,7 +1155,7 @@ fn test_affiliates() {
         vec![
             Coin {
                 denom: token_y_name.to_string(),
-                amount: Uint128::new(996)
+                amount: Uint128::new(995)
             },
             Coin {
                 denom: token_x_name.to_string(),
@@ -1170,7 +1170,7 @@ fn test_affiliates() {
         vec![
             Coin {
                 denom: token_y_name.to_string(),
-                amount: Uint128::new(9960)
+                amount: Uint128::new(9950)
             },
             Coin {
                 denom: token_x_name.to_string(),
