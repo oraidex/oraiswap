@@ -2,7 +2,7 @@ use cosmwasm_std::Addr;
 use oraiswap::asset::{AssetInfo, PairInfo};
 
 use oraiswap::create_entry_points_testing;
-use oraiswap::pair::DEFAULT_COMMISSION_RATE;
+use oraiswap::pair::{DEFAULT_COMMISSION_RATE, DEFAULT_OPERATOR_FEE};
 use oraiswap::querier::query_pair_info_from_pair;
 use oraiswap::testing::MockApp;
 
@@ -48,7 +48,8 @@ fn create_pair() {
             liquidity_token: pair_info.liquidity_token,
             contract_addr,
             asset_infos,
-            commission_rate: DEFAULT_COMMISSION_RATE.into()
+            commission_rate: DEFAULT_COMMISSION_RATE.into(),
+            operator_fee: DEFAULT_OPERATOR_FEE.to_string()
         }
     );
 }
@@ -85,6 +86,7 @@ fn add_pair() {
         contract_addr: Addr::unchecked("contract_addr"),
         asset_infos: asset_infos.clone(),
         commission_rate: DEFAULT_COMMISSION_RATE.into(),
+        operator_fee: DEFAULT_OPERATOR_FEE.to_string(),
     };
 
     // add pair

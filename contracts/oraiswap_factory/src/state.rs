@@ -11,6 +11,7 @@ pub struct Config {
     pub pair_code_id: u64,
     pub token_code_id: u64,
     pub commission_rate: String,
+    pub operator_fee: String,
 }
 
 // put the length bytes at the first for compatibility with legacy singleton store
@@ -66,7 +67,7 @@ mod test {
         bucket, bucket_read, singleton, singleton_read, Bucket, ReadonlyBucket,
     };
     use oraiswap::asset::pair_key;
-    use oraiswap::pair::DEFAULT_COMMISSION_RATE;
+    use oraiswap::pair::{DEFAULT_COMMISSION_RATE, DEFAULT_OPERATOR_FEE};
     const KEY_CONFIG: &[u8] = b"config";
 
     pub fn store_config(storage: &mut dyn Storage, config: &Config) -> StdResult<()> {
@@ -87,6 +88,7 @@ mod test {
                 pair_code_id: 1,
                 token_code_id: 1,
                 commission_rate: DEFAULT_COMMISSION_RATE.to_string(),
+                operator_fee: DEFAULT_OPERATOR_FEE.to_string(),
             },
         )
         .unwrap();
@@ -154,6 +156,7 @@ mod test {
             contract_addr: deps.api.addr_canonicalize("pair0000").unwrap(),
             liquidity_token: deps.api.addr_canonicalize("liquidity0000").unwrap(),
             commission_rate: DEFAULT_COMMISSION_RATE.to_string(),
+            operator_fee: DEFAULT_OPERATOR_FEE.to_string(),
         };
 
         let pair_info2 = PairInfoRaw {
@@ -169,6 +172,7 @@ mod test {
             contract_addr: deps.api.addr_canonicalize("pair0001").unwrap(),
             liquidity_token: deps.api.addr_canonicalize("liquidity0001").unwrap(),
             commission_rate: DEFAULT_COMMISSION_RATE.to_string(),
+            operator_fee: DEFAULT_OPERATOR_FEE.to_string(),
         };
 
         store_pair(&mut deps.storage, &pair_info).unwrap();

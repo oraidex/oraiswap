@@ -14,6 +14,9 @@ use cw20::Cw20ReceiveMsg;
 /// in the future need to update ?
 pub const DEFAULT_COMMISSION_RATE: &str = "0.003";
 
+/// Default operator fee == 0.1%
+pub const DEFAULT_OPERATOR_FEE: &str = "0.001";
+
 #[cw_serde]
 pub struct InstantiateMsg {
     /// Asset infos
@@ -27,6 +30,10 @@ pub struct InstantiateMsg {
     pub commission_rate: Option<String>,
     // admin
     pub admin: Option<Addr>,
+    // operator fee
+    pub operator_fee: Option<String>,
+    // operator
+    pub operator: Option<Addr>,
 }
 
 #[cw_serde]
@@ -63,6 +70,14 @@ pub enum ExecuteMsg {
     },
     DeregisterWithdrawLp {
         providers: Vec<Addr>,
+    },
+    UpdatePoolInfo {
+        commission_rate: Option<String>,
+        operator_fee: Option<String>,
+    },
+    // update operator
+    UpdateOperator {
+        operator: Option<String>,
     },
 }
 
@@ -102,6 +117,8 @@ pub enum QueryMsg {
     TraderIsWhitelisted { trader: Addr },
     #[returns(String)]
     Admin {},
+    #[returns(String)]
+    Operator {},
 }
 
 // We define a custom struct for each query response
@@ -122,6 +139,7 @@ pub struct SimulationResponse {
     pub return_amount: Uint128,
     pub spread_amount: Uint128,
     pub commission_amount: Uint128,
+    pub operator_fee_amount: Uint128,
 }
 
 /// ReverseSimulationResponse returns reverse swap simulation response
@@ -144,7 +162,8 @@ pub fn compute_swap(
     ask_pool: Uint128,
     offer_amount: Uint128,
     commission_rate: Decimal256,
-) -> Result<(Uint128, Uint128, Uint128), ContractError> {
+    operator_fee: Decimal256,
+) -> Result<(Uint128, Uint128, Uint128, Uint128), ContractError> {
     if offer_pool.is_zero() {
         return Err(ContractError::OfferPoolIsZero {});
     }
@@ -164,13 +183,21 @@ pub fn compute_swap(
     let spread_amount = offer_amount.multiply_ratio(ask_pool, offer_pool) - return_amount;
 
     let commission_amount = return_amount * commission_rate;
+    let operator_fee = return_amount * operator_fee;
 
     // commission will be absorbed to pool
-    let return_amount = return_amount - commission_amount;
+    let return_amount = return_amount - commission_amount - operator_fee;
     Ok((
-        return_amount.try_into().map_err(StdError::from)?,
-        spread_amount.try_into().map_err(StdError::from)?,
-        commission_amount.try_into().map_err(StdError::from)?,
+        return_amount
+            .try_into()
+            .map_err(|err| StdError::from(err))?,
+        spread_amount
+            .try_into()
+            .map_err(|err| StdError::from(err))?,
+        commission_amount
+            .try_into()
+            .map_err(|err| StdError::from(err))?,
+        operator_fee.try_into().map_err(|err| StdError::from(err))?,
     ))
 }
 

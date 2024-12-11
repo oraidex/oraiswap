@@ -1,4 +1,6 @@
-use crate::state::{ADMIN, PAIR_INFO, WHITELISTED, WHITELISTED_TRADERS, WHITELISTED_WITHDRAW_LPS};
+use crate::state::{
+    ADMIN, OPERATOR, PAIR_INFO, WHITELISTED, WHITELISTED_TRADERS, WHITELISTED_WITHDRAW_LPS,
+};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 
@@ -17,7 +19,7 @@ use oraiswap::oracle::OracleContract;
 use oraiswap::pair::{
     compute_offer_amount, compute_swap, Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg,
     PairResponse, PoolResponse, QueryMsg, ReverseSimulationResponse, SimulationResponse,
-    DEFAULT_COMMISSION_RATE,
+    DEFAULT_COMMISSION_RATE, DEFAULT_OPERATOR_FEE,
 };
 use oraiswap::querier::query_supply;
 use oraiswap::response::MsgInstantiateContractResponse;
@@ -49,10 +51,24 @@ pub fn instantiate(
         commission_rate: msg
             .commission_rate
             .unwrap_or(DEFAULT_COMMISSION_RATE.to_string()),
+        operator_fee: msg.operator_fee.unwrap_or(DEFAULT_OPERATOR_FEE.to_string()),
     };
+
+    let total_fee = Decimal256::from_str(&pair_info.commission_rate)?
+        + Decimal256::from_str(&pair_info.operator_fee)?;
+    if total_fee >= Decimal256::one() {
+        return Err(StdError::generic_err("Total fee must be less than 1"));
+    }
 
     if let Some(admin) = msg.admin {
         ADMIN.save(deps.storage, &deps.api.addr_canonicalize(admin.as_str())?)?;
+    }
+
+    if let Some(operator) = msg.operator {
+        OPERATOR.save(
+            deps.storage,
+            &deps.api.addr_canonicalize(operator.as_str())?,
+        )?;
     }
 
     PAIR_INFO.save(deps.storage, pair_info)?;
@@ -135,6 +151,11 @@ pub fn execute(
         ExecuteMsg::DeregisterWithdrawLp { providers } => {
             execute_deregister_withdraw_lps(deps, info, providers)
         }
+        ExecuteMsg::UpdatePoolInfo {
+            commission_rate,
+            operator_fee,
+        } => execute_update_pool_info(deps, info, commission_rate, operator_fee),
+        ExecuteMsg::UpdateOperator { operator } => execute_update_operator(deps, info, operator),
     }
 }
 
@@ -201,6 +222,43 @@ pub fn receive_cw20(
         }
         Err(err) => Err(ContractError::Std(err)),
     }
+}
+
+fn execute_update_pool_info(
+    deps: DepsMut,
+    info: MessageInfo,
+    commission_rate: Option<String>,
+    operator_fee: Option<String>,
+) -> Result<Response, ContractError> {
+    assert_admin(deps.as_ref(), info.sender.to_string())?;
+
+    let mut config: PairInfoRaw = PAIR_INFO.load(deps.storage)?;
+    if let Some(commission_rate) = commission_rate {
+        config.commission_rate = commission_rate;
+    }
+    if let Some(operator_fee) = operator_fee {
+        config.operator_fee = operator_fee;
+    };
+
+    PAIR_INFO.save(deps.storage, &config)?;
+
+    Ok(Response::default().add_attribute("action", "update_pool_info"))
+}
+
+pub fn execute_update_operator(
+    deps: DepsMut,
+    info: MessageInfo,
+    operator: Option<String>,
+) -> Result<Response, ContractError> {
+    assert_admin(deps.as_ref(), info.sender.to_string())?;
+
+    // if None then no operator to recieve fee
+    match operator {
+        Some(addr) => OPERATOR.save(deps.storage, &deps.api.addr_canonicalize(addr.as_str())?)?,
+        None => OPERATOR.remove(deps.storage),
+    };
+
+    Ok(Response::default().add_attribute("action", "update_operator"))
 }
 
 /// This just stores the result for future query
@@ -404,7 +462,10 @@ pub fn swap(
 
     offer_asset.assert_sent_native_token_balance(&info)?;
 
+    let mut messages: Vec<CosmosMsg> = vec![];
+
     let pair_info: PairInfoRaw = PAIR_INFO.load(deps.storage)?;
+    let operator = OPERATOR.may_load(deps.storage)?;
 
     let pools: [Asset; 2] =
         pair_info.query_pools(&deps.querier, deps.api, env.contract.address.clone())?;
@@ -431,22 +492,48 @@ pub fn swap(
     }
 
     let commission_rate = Decimal256::from_str(&pair_info.commission_rate)?;
+    let operator_fee = Decimal256::from_str(&pair_info.operator_fee)?;
     let offer_amount = offer_asset.amount;
-    let (return_amount, spread_amount, commission_amount) = compute_swap(
-        offer_pool.amount,
-        ask_pool.amount,
-        offer_amount,
-        commission_rate,
-    )?;
+    let (mut return_amount, spread_amount, commission_amount, mut operator_fee_amount) =
+        compute_swap(
+            offer_pool.amount,
+            ask_pool.amount,
+            offer_amount,
+            commission_rate,
+            operator_fee,
+        )?;
 
     // check max spread limit if exist
     assert_max_spread(
         belief_price,
         max_spread,
         offer_amount,
-        return_amount + commission_amount,
+        return_amount + commission_amount + operator_fee_amount,
         spread_amount,
     )?;
+
+    // check if there is no operator, refund  fee to the trader
+    match operator {
+        Some(addr) => {
+            if !operator_fee_amount.is_zero() {
+                messages.push(
+                    Asset {
+                        info: ask_pool.info.clone(),
+                        amount: operator_fee_amount,
+                    }
+                    .into_msg(
+                        None,
+                        &deps.querier,
+                        deps.api.addr_humanize(&addr)?,
+                    )?,
+                )
+            }
+        }
+        None => {
+            return_amount += operator_fee_amount;
+            operator_fee_amount = Uint128::zero();
+        }
+    }
 
     // compute tax
     let return_asset = Asset {
@@ -460,7 +547,7 @@ pub fn swap(
     let receiver = to.unwrap_or_else(|| sender.clone());
 
     // update oracle_contract
-    let mut messages: Vec<CosmosMsg> = vec![];
+
     if !return_amount.is_zero() {
         messages.push(return_asset.into_msg(
             Some(&oracle_contract),
@@ -482,6 +569,7 @@ pub fn swap(
         ("tax_amount", &tax_amount.to_string()),
         ("spread_amount", &spread_amount.to_string()),
         ("commission_amount", &commission_amount.to_string()),
+        ("operator_fee_amount", &operator_fee_amount.to_string()),
     ]))
 }
 
@@ -627,6 +715,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
             Ok(to_json_binary(&query_trader_is_whitelisted(deps, trader)?)?)
         }
         QueryMsg::Admin {} => Ok(to_json_binary(&query_admin(deps)?)?),
+        QueryMsg::Operator {} => Ok(to_json_binary(&query_operator(deps)?)?),
     }
 }
 
@@ -639,6 +728,14 @@ fn query_admin(deps: Deps) -> StdResult<String> {
     Ok(match admin {
         None => String::default(),
         Some(admin) => deps.api.addr_humanize(&admin)?.to_string(),
+    })
+}
+
+fn query_operator(deps: Deps) -> StdResult<String> {
+    let operator = OPERATOR.may_load(deps.storage)?;
+    Ok(match operator {
+        None => String::default(),
+        Some(operator) => deps.api.addr_humanize(&operator)?.to_string(),
     })
 }
 
@@ -688,17 +785,21 @@ pub fn query_simulation(
     }
 
     let commission_rate = Decimal256::from_str(&pair_info.commission_rate)?;
-    let (return_amount, spread_amount, commission_amount) = compute_swap(
+    let operator_fee = Decimal256::from_str(&pair_info.operator_fee)?;
+
+    let (return_amount, spread_amount, commission_amount, operator_fee_amount) = compute_swap(
         offer_pool.amount,
         ask_pool.amount,
         offer_asset.amount,
         commission_rate,
+        operator_fee,
     )?;
 
     Ok(SimulationResponse {
         return_amount,
         spread_amount,
         commission_amount,
+        operator_fee_amount,
     })
 }
 

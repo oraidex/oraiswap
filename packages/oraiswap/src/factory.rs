@@ -10,6 +10,7 @@ pub struct InstantiateMsg {
     pub token_code_id: u64,
     pub oracle_addr: Addr,
     pub commission_rate: Option<String>,
+    pub operator_fee: Option<String>,
 }
 
 #[cw_serde]
@@ -25,6 +26,7 @@ pub enum ExecuteMsg {
         /// Asset infos
         asset_infos: [AssetInfo; 2],
         pair_admin: Option<String>,
+        operator: Option<String>,
     },
     AddPair {
         pair_info: PairInfo,
