@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    entry_point, from_binary, to_binary, Addr, Attribute, BankMsg, Binary, Coin, CosmosMsg,
+    entry_point, from_json, to_json_binary, Addr, Attribute, BankMsg, Binary, Coin, CosmosMsg,
     Decimal, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
@@ -70,7 +70,7 @@ pub fn receive_cw20(
     info: MessageInfo,
     cw20_msg: Cw20ReceiveMsg,
 ) -> StdResult<Response> {
-    match from_binary(&cw20_msg.msg) {
+    match from_json(&cw20_msg.msg) {
         Ok(Cw20HookMsg::Convert {}) => {
             // check permission
             let token_raw = deps.api.addr_canonicalize(info.sender.as_str())?;
@@ -121,7 +121,7 @@ pub fn receive_cw20(
                     ("to_amount", &amount_receive.to_string()),
                 ]))
             } else {
-                return Err(StdError::generic_err("invalid cw20 hook message"));
+                Err(StdError::generic_err("invalid cw20 hook message"))
             }
         }
         Err(_) => Err(StdError::generic_err("invalid cw20 hook message")),
@@ -221,21 +221,21 @@ pub fn convert_reverse(
             // dont care about mint burn because the sent info must be native -> cannot mint burn
             let message = Asset {
                 info: from_asset,
-                amount: amount_receive.clone(),
+                amount: amount_receive,
             }
             .into_msg(None, &deps.querier, info.sender.clone())?;
 
-            return Ok(Response::new().add_message(message).add_attributes(vec![
+            Ok(Response::new().add_message(message).add_attributes(vec![
                 ("action", "convert_token_reverse"),
                 ("denom", native_coin.denom.as_str()),
                 ("from_amount", &native_coin.amount.to_string()),
                 ("to_amount", &amount_receive.to_string()),
-            ]));
+            ]))
         } else {
-            return Err(StdError::generic_err("Cannot find the native token that matches the input to convert in convert_reverse()"));
-        };
+            Err(StdError::generic_err("Cannot find the native token that matches the input to convert in convert_reverse()"))
+        }
     } else {
-        return Err(StdError::generic_err("invalid cw20 hook message"));
+        Err(StdError::generic_err("invalid cw20 hook message"))
     }
 }
 
@@ -265,7 +265,7 @@ fn process_build_convert_msg(
             };
             Ok(CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: contract_addr.to_string(),
-                msg: to_binary(&cw20_msg).unwrap(),
+                msg: to_json_binary(&cw20_msg).unwrap(),
                 funds: vec![],
             }))
         }
@@ -293,7 +293,7 @@ fn process_build_convert_reverse_msg(
             if is_mint_burn {
                 msgs.push(CosmosMsg::Wasm(WasmMsg::Execute {
                     contract_addr: contract_addr.to_string(),
-                    msg: to_binary(&Cw20ExecuteMsg::Burn {
+                    msg: to_json_binary(&Cw20ExecuteMsg::Burn {
                         amount: from_asset.amount,
                     })?,
                     funds: vec![],
@@ -308,8 +308,10 @@ fn process_build_convert_reverse_msg(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Config {} => to_binary(&query_config(deps)?),
-        QueryMsg::ConvertInfo { asset_info } => to_binary(&query_convert_info(deps, asset_info)?),
+        QueryMsg::Config {} => to_json_binary(&query_config(deps)?),
+        QueryMsg::ConvertInfo { asset_info } => {
+            to_json_binary(&query_convert_info(deps, asset_info)?)
+        }
     }
 }
 
@@ -346,7 +348,7 @@ pub fn withdraw_tokens(
         let balance = asset.query_pool(&deps.querier, env.contract.address.clone())?;
         let message = Asset {
             info: asset,
-            amount: balance.clone(),
+            amount: balance,
         }
         .into_msg(None, &deps.querier, owner.clone())?;
         messages.push(message);

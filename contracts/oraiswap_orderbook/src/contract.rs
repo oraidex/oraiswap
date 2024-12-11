@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 
 use cosmwasm_std::{
-    from_binary, to_binary, Addr, Binary, Decimal, Deps, DepsMut, Env, MessageInfo,
+    from_json, to_json_binary, Addr, Binary, Decimal, Deps, DepsMut, Env, MessageInfo,
     Order as OrderBy, Response, StdError, StdResult, Uint128,
 };
 use cw_utils::one_coin;
@@ -19,6 +19,7 @@ use crate::query::{
 use crate::state::{
     init_last_order_id, read_config, read_orderbook, store_config, store_orderbook, validate_admin,
 };
+use cw_controllers::Hooks;
 
 use cw20::Cw20ReceiveMsg;
 use oraiswap::asset::{pair_key, Asset, AssetInfo};
@@ -33,6 +34,9 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // default commission rate = 0.1 %
 const DEFAULT_COMMISSION_RATE: &str = "0.001";
+
+/// Hooks controller for the base asset holding whitelist
+pub const WHITELIST_TRADER: Hooks = Hooks::new("whitelist_TRADER");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -252,6 +256,8 @@ pub fn execute(
                 ("token", &asset.to_string()),
             ]))
         }
+        ExecuteMsg::WhitelistTrader { trader } => execute_whitelist_trader(deps, info, trader),
+        ExecuteMsg::RemoveTrader { trader } => execute_remove_trader(deps, info, trader),
     }
 }
 
@@ -271,6 +277,42 @@ fn check_paused(deps: Deps, msg: &ExecuteMsg) -> Result<(), ContractError> {
         }
     }
     Ok(())
+}
+
+pub fn execute_whitelist_trader(
+    deps: DepsMut,
+    info: MessageInfo,
+    trader: Addr,
+) -> Result<Response, ContractError> {
+    let contract_info = read_config(deps.storage)?;
+    validate_admin(deps.api, &contract_info.admin, info.sender.as_str())?;
+
+    WHITELIST_TRADER
+        .add_hook(deps.storage, trader.clone())
+        .map_err(|error| StdError::generic_err(error.to_string()))?;
+
+    Ok(Response::new().add_attributes(vec![
+        ("action", "whitelist_trader"),
+        ("trader", trader.as_str()),
+    ]))
+}
+
+pub fn execute_remove_trader(
+    deps: DepsMut,
+    info: MessageInfo,
+    trader: Addr,
+) -> Result<Response, ContractError> {
+    let contract_info = read_config(deps.storage)?;
+    validate_admin(deps.api, &contract_info.admin, info.sender.as_str())?;
+
+    WHITELIST_TRADER
+        .remove_hook(deps.storage, trader.clone())
+        .map_err(|error| StdError::generic_err(error.to_string()))?;
+
+    Ok(Response::new().add_attributes(vec![
+        ("action", "remove_trader"),
+        ("trader", trader.as_str()),
+    ]))
 }
 
 pub fn execute_update_admin(
@@ -406,7 +448,7 @@ pub fn receive_cw20(
         amount: cw20_msg.amount,
     };
 
-    match from_binary(&cw20_msg.msg) {
+    match from_json(&cw20_msg.msg) {
         Ok(Cw20HookMsg::SubmitOrder { direction, assets }) => {
             let pair_key = pair_key(&[
                 assets[0].to_raw(deps.api)?.info,
@@ -486,17 +528,17 @@ pub fn receive_cw20(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::ContractInfo {} => to_binary(&query_contract_info(deps)?),
+        QueryMsg::ContractInfo {} => to_json_binary(&query_contract_info(deps)?),
         QueryMsg::Order {
             order_id,
             asset_infos,
-        } => to_binary(&query_order(deps, asset_infos, order_id)?),
-        QueryMsg::OrderBook { asset_infos } => to_binary(&query_orderbook(deps, asset_infos)?),
+        } => to_json_binary(&query_order(deps, asset_infos, order_id)?),
+        QueryMsg::OrderBook { asset_infos } => to_json_binary(&query_orderbook(deps, asset_infos)?),
         QueryMsg::OrderBooks {
             start_after,
             limit,
             order_by,
-        } => to_binary(&query_orderbooks(deps, start_after, limit, order_by)?),
+        } => to_json_binary(&query_orderbooks(deps, start_after, limit, order_by)?),
         QueryMsg::Orders {
             asset_infos,
             direction,
@@ -504,7 +546,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             start_after,
             limit,
             order_by,
-        } => to_binary(&query_orders(
+        } => to_json_binary(&query_orders(
             deps,
             asset_infos,
             direction,
@@ -513,12 +555,12 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             limit,
             order_by,
         )?),
-        QueryMsg::LastOrderId {} => to_binary(&query_last_order_id(deps)?),
+        QueryMsg::LastOrderId {} => to_json_binary(&query_last_order_id(deps)?),
         QueryMsg::Tick {
             price,
             asset_infos,
             direction,
-        } => to_binary(&query_tick(
+        } => to_json_binary(&query_tick(
             deps.storage,
             &pair_key(&[
                 asset_infos[0].to_raw(deps.api)?,
@@ -534,7 +576,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             end,
             limit,
             order_by,
-        } => to_binary(&query_ticks_with_end(
+        } => to_json_binary(&query_ticks_with_end(
             deps.storage,
             &pair_key(&[
                 asset_infos[0].to_raw(deps.api)?,
@@ -544,7 +586,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             start_after,
             end,
             limit,
-            order_by.map_or(None, |val| OrderBy::try_from(val).ok()),
+            order_by.and_then(|val| OrderBy::try_from(val).ok()),
         )?),
         QueryMsg::MidPrice { asset_infos } => {
             let pair_key = pair_key(&[
@@ -566,20 +608,23 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 }
             };
 
-            to_binary(&mid_price)
+            to_json_binary(&mid_price)
         }
         QueryMsg::SimulateMarketOrder {
             direction,
             asset_infos,
             slippage,
             offer_amount,
-        } => to_binary(&query_simulate_market_order(
+        } => to_json_binary(&query_simulate_market_order(
             deps,
             direction,
             asset_infos,
             slippage,
             offer_amount,
         )?),
+        QueryMsg::WhitelistedTraders {} => {
+            to_json_binary(&WHITELIST_TRADER.query_hooks(deps)?.hooks)
+        }
     }
 }
 

@@ -24,6 +24,8 @@ use cosmwasm_storage::ReadonlyBucket;
 
 use crate::state::{DEFAULT_LIMIT, MAX_LIMIT};
 
+type FilterFn = Box<dyn Fn(&OrderDirection) -> bool>;
+
 pub fn query_order(
     deps: Deps,
     asset_infos: [AssetInfo; 2],
@@ -52,19 +54,18 @@ pub fn query_orders(
     limit: Option<u32>,
     order_by: Option<i32>,
 ) -> StdResult<OrdersResponse> {
-    let order_by = order_by.map_or(None, |val| OrderBy::try_from(val).ok());
+    let order_by = order_by.and_then(|val| OrderBy::try_from(val).ok());
     let pair_key = pair_key(&[
         asset_infos[0].to_raw(deps.api)?,
         asset_infos[1].to_raw(deps.api)?,
     ]);
     let orderbook_pair = read_orderbook(deps.storage, &pair_key)?;
 
-    let (direction_filter, direction_key): (Box<dyn Fn(&OrderDirection) -> bool>, Vec<u8>) =
-        match direction {
-            // copy value to closure
-            Some(d) => (Box::new(move |x| d.eq(x)), d.as_bytes().to_vec()),
-            None => (Box::new(|_| true), OrderDirection::Buy.as_bytes().to_vec()),
-        };
+    let (direction_filter, direction_key): (FilterFn, Vec<u8>) = match direction {
+        // copy value to closure
+        Some(d) => (Box::new(move |x| d.eq(x)), d.as_bytes().to_vec()),
+        None => (Box::new(|_| true), OrderDirection::Buy.as_bytes().to_vec()),
+    };
 
     let orders: Option<Vec<Order>> = match filter {
         OrderFilter::Bidder(bidder_addr) => {
@@ -149,7 +150,7 @@ pub fn query_orderbooks(
     limit: Option<u32>,
     order_by: Option<i32>,
 ) -> StdResult<OrderBooksResponse> {
-    let order_by = order_by.map_or(None, |val| OrderBy::try_from(val).ok());
+    let order_by = order_by.and_then(|val| OrderBy::try_from(val).ok());
     let order_books = read_orderbooks(deps.storage, start_after, limit, order_by)?;
     order_books
         .into_iter()

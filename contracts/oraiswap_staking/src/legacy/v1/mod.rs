@@ -1,6 +1,7 @@
+#![allow(dead_code)]
 use cosmwasm_std::{Api, CanonicalAddr, Order, StdError, StdResult, Storage};
 use cosmwasm_storage::{Bucket, ReadonlyBucket};
-use oraiswap::asset::{AssetInfo, AssetRaw};
+use oraiswap::asset::AssetRaw;
 
 use crate::state::{PoolInfo, RewardInfo};
 
@@ -84,7 +85,7 @@ pub fn old_rewards_read_all(
 }
 
 /// returns a bucket with all stakers belong by this staker (query it by staker)
-pub fn old_stakers_remove<'a>(storage: &'a mut dyn Storage, asset_key: &[u8], staker: &[u8]) -> () {
+pub fn old_stakers_remove<'a>(storage: &mut dyn Storage, asset_key: &[u8], staker: &[u8]) {
     Bucket::<CanonicalAddr>::multilevel(storage, &[PREFIX_STAKER, asset_key]).remove(staker)
 }
 
@@ -103,12 +104,8 @@ pub fn old_read_all_is_migrated(
         .collect::<StdResult<Vec<(Vec<u8>, bool)>>>()
 }
 
-pub fn old_remove_store_is_migrated(
-    storage: &mut dyn Storage,
-    asset_key: &[u8],
-    staker: &[u8],
-) -> () {
-    Bucket::<bool>::multilevel(storage, &[PREFIX_IS_MIGRATED, staker]).remove(&asset_key)
+pub fn old_remove_store_is_migrated(storage: &mut dyn Storage, asset_key: &[u8], staker: &[u8]) {
+    Bucket::<bool>::multilevel(storage, &[PREFIX_IS_MIGRATED, staker]).remove(asset_key)
 }
 
 pub fn old_read_all_is_migrated_key_parsed(
@@ -143,7 +140,7 @@ pub fn old_read_rewards_per_sec(
     weight_bucket.load(asset_key)
 }
 
-pub fn old_remove_rewards_per_sec(storage: &mut dyn Storage, asset_key: &[u8]) -> () {
+pub fn old_remove_rewards_per_sec(storage: &mut dyn Storage, asset_key: &[u8]) {
     Bucket::<Vec<AssetRaw>>::new(storage, PREFIX_REWARDS_PER_SEC).remove(asset_key)
 }
 

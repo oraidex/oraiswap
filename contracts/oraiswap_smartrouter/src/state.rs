@@ -41,7 +41,7 @@ pub fn store_route(
             },
         });
     }
-    if reversed_ops.len() > 0usize {
+    if !reversed_ops.is_empty() {
         match ROUTING_TABLE.may_load(storage, reversed_key)? {
             Some(mut routes) => {
                 routes.push(reversed_ops);

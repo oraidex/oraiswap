@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use crate::contract::WHITELIST_TRADER;
 use crate::orderbook::{Executor, Order, OrderBook, OrderWithFee};
 use crate::query::get_price_info_for_market_order;
 use crate::state::{
@@ -167,20 +168,17 @@ pub fn submit_market_order(
     // after matching process, if order still exist => not fulfilled => refund
     let order = read_order(deps.storage, &orderbook_pair.get_pair_key(), order_id);
 
-    match order {
-        Ok(order) => {
-            let refund_amount = order.offer_amount.checked_sub(order.filled_offer_amount)?;
-            let refund_asset = Asset {
-                info: offer_asset.info.clone(),
-                amount: refund_amount,
-            };
-            // remove this order
-            remove_order(deps.storage, &orderbook_pair.get_pair_key(), &order)?;
-            response = response
-                .add_attribute("refund_amount", &refund_amount.to_string())
-                .add_message(refund_asset.into_msg(None, &deps.querier, sender.clone())?)
-        }
-        Err(_) => {}
+    if let Ok(order) = order {
+        let refund_amount = order.offer_amount.checked_sub(order.filled_offer_amount)?;
+        let refund_asset = Asset {
+            info: offer_asset.info.clone(),
+            amount: refund_amount,
+        };
+        // remove this order
+        remove_order(deps.storage, &orderbook_pair.get_pair_key(), &order)?;
+        response = response
+            .add_attribute("refund_amount", refund_amount.to_string())
+            .add_message(refund_asset.into_msg(None, &deps.querier, sender.clone())?)
     }
 
     Ok(response.add_attributes(vec![
@@ -261,7 +259,7 @@ pub fn cancel_order(
         ("status", "Cancel"),
         (
             "bidder_addr",
-            &deps.api.addr_humanize(&order.bidder_addr)?.to_string(),
+            deps.api.addr_humanize(&order.bidder_addr)?.as_str(),
         ),
         ("offer_amount", &order.offer_amount.to_string()),
         ("ask_amount", &order.ask_amount.to_string()),
@@ -293,11 +291,8 @@ fn process_reward(
     address: CanonicalAddr,
     reward_assets: [Asset; 2],
 ) -> Executor {
-    let executor = read_reward(storage, &pair_key, &address);
-    return match executor {
-        Ok(r_reward) => r_reward,
-        Err(_err) => Executor::new(address, reward_assets),
-    };
+    read_reward(storage, pair_key, &address)
+        .unwrap_or_else(|_| Executor::new(address, reward_assets))
 }
 
 fn transfer_reward(
@@ -307,7 +302,7 @@ fn transfer_reward(
     messages: &mut Vec<CosmosMsg>,
 ) -> StdResult<()> {
     for reward_asset in executor.reward_assets.iter_mut() {
-        if Uint128::from(reward_asset.amount) >= Uint128::from(MIN_FEE) {
+        if reward_asset.amount.u128() >= MIN_FEE {
             messages.push(reward_asset.into_msg(
                 None,
                 &deps.querier,
@@ -371,7 +366,8 @@ pub fn calculate_fee(
         .amount
         .checked_sub(reward_fee)
         .unwrap_or_default();
-    return Ok(reward_fee);
+
+    Ok(reward_fee)
 }
 
 fn process_payment_list_orders(
@@ -395,16 +391,21 @@ fn process_payment_list_orders(
                 amount: filled_ask,
             };
 
-            let reward_fee = calculate_fee(
-                commission_rate,
-                order.direction,
-                &mut trader_ask_asset,
-                reward,
-            )?;
-            order.reward_fee = reward_fee;
+            let bidder_addr = deps.api.addr_humanize(&order.bidder_addr)?;
+
+            if !WHITELIST_TRADER.query_hook(*deps, bidder_addr.to_string())? {
+                let reward_fee: Uint128 = calculate_fee(
+                    commission_rate,
+                    order.direction,
+                    &mut trader_ask_asset,
+                    reward,
+                )?;
+                order.reward_fee = reward_fee;
+            }
+
             if !trader_ask_asset.amount.is_zero() {
                 let trader_payment: Payment = Payment {
-                    address: deps.api.addr_humanize(&order.bidder_addr)?,
+                    address: bidder_addr,
                     asset: Asset {
                         info: trader_ask_asset.info.clone(),
                         amount: trader_ask_asset.amount,
@@ -457,102 +458,98 @@ pub fn matching_order(
 
     // in matching process of buy order, we don't check minimum remaining amount to mark user order as fulfilled, but only with a small threshold
     let mut cursor = positions_bucket.range(None, None, sort_order);
-    loop {
-        if let Some(Ok((k, _))) = cursor.next() {
-            let match_price =
-                Decimal::raw(u128::from_be_bytes(k.try_into().map_err(|_| {
-                    StdError::generic_err("Error converting bytes to u128")
-                })?));
+    while let Some(Ok((k, _))) = cursor.next() {
+        let match_price =
+            Decimal::raw(u128::from_be_bytes(k.try_into().map_err(|_| {
+                StdError::generic_err("Error converting bytes to u128")
+            })?));
 
-            match order.direction {
-                OrderDirection::Buy => {
-                    if order_price < match_price {
-                        break;
-                    }
-                }
-                OrderDirection::Sell => {
-                    if order_price > match_price {
-                        break;
-                    }
+        match order.direction {
+            OrderDirection::Buy => {
+                if order_price < match_price {
+                    break;
                 }
             }
-
-            if user_order.is_fulfilled() {
-                break;
-            }
-
-            if let Some(orders) = orderbook_pair.query_orders_by_price_and_direction(
-                deps.storage,
-                match_price,
-                matched_orders_direction,
-                None,
-            ) {
-                if orders.len() == 0 {
-                    continue;
-                }
-
-                let match_orders_with_fees = OrderWithFee::from_orders(orders);
-
-                for mut match_order in match_orders_with_fees {
-                    if user_order.is_fulfilled() {
-                        break;
-                    }
-                    // remaining ask & offer of buy order
-                    let lef_user_ask = user_order
-                        .ask_amount
-                        .checked_sub(user_order.filled_ask_amount)?;
-                    let lef_user_offer = user_order
-                        .offer_amount
-                        .checked_sub(user_order.filled_offer_amount)?;
-
-                    // remaining offer & ask of sell order
-                    let lef_match_offer = match_order
-                        .offer_amount
-                        .checked_sub(match_order.filled_offer_amount)?;
-                    let lef_match_ask = match_order
-                        .ask_amount
-                        .checked_sub(match_order.filled_ask_amount)?;
-
-                    // ask_amount of user_order <= min(lef_buy_ask, lef_sell_offer)
-                    let mut user_ask_amount = Uint128::min(lef_user_ask, lef_match_offer);
-                    let mut user_offer_amount = match order.direction {
-                        OrderDirection::Buy => user_ask_amount * match_price,
-                        OrderDirection::Sell => {
-                            user_ask_amount * Decimal::one().atomics() / match_price.atomics()
-                        }
-                    };
-
-                    let min_user_offer_amount = Uint128::min(lef_user_offer, lef_match_ask);
-                    // if user_offer_amount > min_user_offer_amount, we need re calc ask_amount
-                    if user_offer_amount > min_user_offer_amount {
-                        user_offer_amount = min_user_offer_amount;
-                        user_ask_amount = match order.direction {
-                            OrderDirection::Buy => {
-                                user_offer_amount * Decimal::one().atomics() / match_price.atomics()
-                            }
-                            OrderDirection::Sell => user_offer_amount * match_price,
-                        }
-                    }
-
-                    // with match order, since order direction is opposite to the user's order, so the params will be reverse
-                    match_order.fill_order(
-                        user_offer_amount,
-                        user_ask_amount,
-                        user_min_offer_to_fulfilled,
-                        user_min_ask_to_fulfilled,
-                    )?;
-                    user_order.fill_order(
-                        user_ask_amount,
-                        user_offer_amount,
-                        user_min_ask_to_fulfilled,
-                        user_min_offer_to_fulfilled,
-                    )?;
-
-                    orders_matched.push(match_order);
+            OrderDirection::Sell => {
+                if order_price > match_price {
+                    break;
                 }
             }
-        } else {
+        }
+
+        if user_order.is_fulfilled() {
             break;
+        }
+
+        if let Some(orders) = orderbook_pair.query_orders_by_price_and_direction(
+            deps.storage,
+            match_price,
+            matched_orders_direction,
+            None,
+        ) {
+            if orders.is_empty() {
+                continue;
+            }
+
+            let match_orders_with_fees = OrderWithFee::from_orders(orders);
+
+            for mut match_order in match_orders_with_fees {
+                if user_order.is_fulfilled() {
+                    break;
+                }
+                // remaining ask & offer of buy order
+                let lef_user_ask = user_order
+                    .ask_amount
+                    .checked_sub(user_order.filled_ask_amount)?;
+                let lef_user_offer = user_order
+                    .offer_amount
+                    .checked_sub(user_order.filled_offer_amount)?;
+
+                // remaining offer & ask of sell order
+                let lef_match_offer = match_order
+                    .offer_amount
+                    .checked_sub(match_order.filled_offer_amount)?;
+                let lef_match_ask = match_order
+                    .ask_amount
+                    .checked_sub(match_order.filled_ask_amount)?;
+
+                // ask_amount of user_order <= min(lef_buy_ask, lef_sell_offer)
+                let mut user_ask_amount = Uint128::min(lef_user_ask, lef_match_offer);
+                let mut user_offer_amount = match order.direction {
+                    OrderDirection::Buy => user_ask_amount * match_price,
+                    OrderDirection::Sell => {
+                        user_ask_amount * Decimal::one().atomics() / match_price.atomics()
+                    }
+                };
+
+                let min_user_offer_amount = Uint128::min(lef_user_offer, lef_match_ask);
+                // if user_offer_amount > min_user_offer_amount, we need re calc ask_amount
+                if user_offer_amount > min_user_offer_amount {
+                    user_offer_amount = min_user_offer_amount;
+                    user_ask_amount = match order.direction {
+                        OrderDirection::Buy => {
+                            user_offer_amount * Decimal::one().atomics() / match_price.atomics()
+                        }
+                        OrderDirection::Sell => user_offer_amount * match_price,
+                    }
+                }
+
+                // with match order, since order direction is opposite to the user's order, so the params will be reverse
+                match_order.fill_order(
+                    user_offer_amount,
+                    user_ask_amount,
+                    user_min_offer_to_fulfilled,
+                    user_min_ask_to_fulfilled,
+                )?;
+                user_order.fill_order(
+                    user_ask_amount,
+                    user_offer_amount,
+                    user_min_ask_to_fulfilled,
+                    user_min_offer_to_fulfilled,
+                )?;
+
+                orders_matched.push(match_order);
+            }
         }
     }
 
@@ -613,7 +610,7 @@ pub fn process_matching(
         price_threshold,
     )?;
 
-    if matched_orders.len() == 0 {
+    if matched_orders.is_empty() {
         return Ok(Response::default());
     }
 
@@ -654,7 +651,7 @@ pub fn process_matching(
                 list_trader.push(trader_refunds);
             }
             matched_events.push(to_events(
-                &order_matched,
+                order_matched,
                 deps.api
                     .addr_humanize(&order_matched.bidder_addr)?
                     .to_string(),

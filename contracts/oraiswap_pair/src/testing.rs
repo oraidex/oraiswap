@@ -1,10 +1,226 @@
 use cosmwasm_std::testing::MOCK_CONTRACT_ADDR;
-use cosmwasm_std::{attr, to_binary, Addr, Coin, Decimal, Uint128};
+use cosmwasm_std::{attr, to_binary, to_json_binary, Addr, Coin, Decimal, Uint128};
 use cw20::Cw20ReceiveMsg;
 use oraiswap::asset::{Asset, AssetInfo, ORAI_DENOM};
 use oraiswap::create_entry_points_testing;
-use oraiswap::pair::{Cw20HookMsg, ExecuteMsg, InstantiateMsg, PairResponse, QueryMsg};
-use oraiswap::testing::{MockApp, ATOM_DENOM};
+use oraiswap::pair::{Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg, PairResponse, QueryMsg};
+use oraiswap::testing::{MockApp, APP_OWNER, ATOM_DENOM};
+
+#[test]
+fn provide_liquidity_and_change_obtc_to_native_btc() {
+    let mut app = MockApp::new(&[(
+        &MOCK_CONTRACT_ADDR.to_string(),
+        &[
+            Coin {
+                denom: ORAI_DENOM.to_string(),
+                amount: Uint128::from(200u128),
+            },
+            Coin {
+                denom: "native_btc".to_string(),
+                amount: Uint128::from(200u128),
+            },
+        ],
+    )]);
+    app.set_oracle_contract(Box::new(create_entry_points_testing!(oraiswap_oracle)));
+    app.set_token_contract(Box::new(create_entry_points_testing!(oraiswap_token)));
+    app.set_token_balances(&[(
+        &"obtc".to_string(),
+        &[(&MOCK_CONTRACT_ADDR.to_string(), 1000u128)],
+    )])
+    .unwrap();
+
+    let oracle_addr = app.oracle_addr.clone();
+    let _ = app
+        .execute(
+            Addr::unchecked(APP_OWNER),
+            oracle_addr.clone(),
+            &oraiswap::oracle::ExecuteMsg::UpdateTaxRate {
+                rate: Decimal::zero(),
+            },
+            &[],
+        )
+        .unwrap();
+    let _ = app
+        .execute(
+            Addr::unchecked(APP_OWNER),
+            oracle_addr.clone(),
+            &oraiswap::oracle::ExecuteMsg::UpdateTaxCap {
+                denom: "native_btc".to_string(),
+                cap: Uint128::from(0u128),
+            },
+            &[],
+        )
+        .unwrap();
+    let owner = Addr::unchecked("owner");
+    let obtc_addr = app.get_token_addr("obtc").unwrap();
+    let msg = InstantiateMsg {
+        oracle_addr: oracle_addr.clone(),
+        asset_infos: [
+            AssetInfo::NativeToken {
+                denom: ORAI_DENOM.to_string(),
+            },
+            AssetInfo::Token {
+                contract_addr: obtc_addr.clone(),
+            },
+        ],
+        token_code_id: app.token_id(),
+        commission_rate: None,
+        admin: Some(owner.clone()),
+        operator_fee: None,
+        operator: None,
+    };
+    // we can just call .unwrap() to assert this was a success
+    let code_id = app.upload(Box::new(
+        create_entry_points_testing!(crate)
+            .with_migrate_empty(crate::contract::migrate)
+            .with_reply_empty(crate::contract::reply),
+    ));
+    let pair_addr = app
+        .instantiate(code_id, owner.clone(), &msg, &[], "pair")
+        .unwrap();
+
+    // set allowance
+    app.execute(
+        Addr::unchecked(MOCK_CONTRACT_ADDR),
+        obtc_addr.clone(),
+        &cw20::Cw20ExecuteMsg::IncreaseAllowance {
+            spender: pair_addr.to_string(),
+            amount: Uint128::from(100u128),
+            expires: None,
+        },
+        &[],
+    )
+    .unwrap();
+    // successfully provide liquidity for the exist pool
+    let msg = ExecuteMsg::ProvideLiquidity {
+        assets: [
+            Asset {
+                info: AssetInfo::NativeToken {
+                    denom: ORAI_DENOM.to_string(),
+                },
+                amount: Uint128::from(100u128),
+            },
+            Asset {
+                info: AssetInfo::Token {
+                    contract_addr: obtc_addr.clone(),
+                },
+                amount: Uint128::from(100u128),
+            },
+        ],
+        slippage_tolerance: None,
+        receiver: Some(pair_addr.clone()),
+    };
+    let res = app
+        .execute(
+            Addr::unchecked(MOCK_CONTRACT_ADDR),
+            pair_addr.clone(),
+            &msg,
+            &[
+                Coin {
+                    denom: ORAI_DENOM.to_string(),
+                    amount: Uint128::from(100u128),
+                },
+                Coin {
+                    denom: "native_btc".to_string(),
+                    amount: Uint128::from(200u128),
+                },
+            ],
+        )
+        .unwrap();
+    println!("{:?}", res);
+    let receiver_obtc_balance: cw20::BalanceResponse = app
+        .query(
+            Addr::unchecked("contract3").clone(),
+            &cw20::Cw20QueryMsg::Balance {
+                address: pair_addr.clone().to_string(),
+            },
+        )
+        .unwrap();
+    println!("{:?}", receiver_obtc_balance);
+    let new_code_id = app.upload(Box::new(
+        create_entry_points_testing!(crate)
+            .with_migrate_empty(crate::contract::migrate)
+            .with_reply_empty(crate::contract::reply),
+    ));
+    let res = app
+        .migrate(
+            owner.clone(),
+            pair_addr.clone(),
+            &MigrateMsg {
+                admin: None,
+                asset_infos: Some([
+                    AssetInfo::NativeToken {
+                        denom: ORAI_DENOM.to_string(),
+                    },
+                    AssetInfo::NativeToken {
+                        denom: "native_btc".to_string(),
+                    },
+                ]),
+            },
+            new_code_id,
+        )
+        .unwrap();
+    println!("{:?}", res);
+    let pair_info: PairResponse = app
+        .query(pair_addr.clone(), &oraiswap::pair::QueryMsg::Pair {})
+        .unwrap();
+    println!("{:?}", pair_info);
+    let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
+        sender: MOCK_CONTRACT_ADDR.into(),
+        msg: to_binary(&Cw20HookMsg::WithdrawLiquidity {}).unwrap(),
+        amount: Uint128::from(100u128),
+    });
+    let balance = app
+        .query_balance(Addr::unchecked(MOCK_CONTRACT_ADDR), "orai".to_string())
+        .unwrap();
+    assert_eq!(balance, Uint128::new(100));
+    let balance = app
+        .query_balance(
+            Addr::unchecked(MOCK_CONTRACT_ADDR),
+            "native_btc".to_string(),
+        )
+        .unwrap();
+    assert_eq!(balance, Uint128::new(0));
+    // enable whitelist
+    app.execute(
+        owner.clone(),
+        pair_addr.clone(),
+        &ExecuteMsg::EnableWhitelist { status: true },
+        &[],
+    )
+    .unwrap();
+    // set whitelist withdraw lp
+    app.execute(
+        owner.clone(),
+        pair_addr.clone(),
+        &ExecuteMsg::RegisterWithdrawLp {
+            providers: vec![Addr::unchecked(MOCK_CONTRACT_ADDR)],
+        },
+        &[],
+    )
+    .unwrap();
+
+    let res = app
+        .execute(
+            pair_info.info.liquidity_token.into(),
+            pair_addr.clone(),
+            &msg,
+            &[],
+        )
+        .map_err(|e| e.to_string());
+    println!("{:?}", res);
+    let balance = app
+        .query_balance(Addr::unchecked(MOCK_CONTRACT_ADDR), "orai".to_string())
+        .unwrap();
+    assert_eq!(balance, Uint128::new(200));
+    let balance = app
+        .query_balance(
+            Addr::unchecked(MOCK_CONTRACT_ADDR),
+            "native_btc".to_string(),
+        )
+        .unwrap();
+    assert_eq!(balance, Uint128::new(200));
+}
 
 #[test]
 fn provide_liquidity_both_native() {
@@ -27,12 +243,10 @@ fn provide_liquidity_both_native() {
     app.set_token_contract(Box::new(create_entry_points_testing!(oraiswap_token)));
 
     app.set_token_balances(&[
-        (
-            &"liquidity".to_string(),
-            &[(&MOCK_CONTRACT_ADDR.to_string(), &Uint128::zero())],
-        ),
-        (&"asset".to_string(), &[]),
-    ]);
+        ("liquidity", &[(&MOCK_CONTRACT_ADDR.to_string(), 0)]),
+        ("asset", &[]),
+    ])
+    .unwrap();
 
     let msg = InstantiateMsg {
         oracle_addr: app.oracle_addr.clone(),
@@ -44,7 +258,7 @@ fn provide_liquidity_both_native() {
                 denom: ATOM_DENOM.to_string(),
             },
         ],
-        token_code_id: app.token_id,
+        token_code_id: app.token_id(),
         commission_rate: None,
         admin: None,
         operator_fee: None,
@@ -53,7 +267,7 @@ fn provide_liquidity_both_native() {
 
     // we can just call .unwrap() to assert this was a success
     let code_id = app.upload(Box::new(
-        create_entry_points_testing!(crate).with_reply(crate::contract::reply),
+        create_entry_points_testing!(crate).with_reply_empty(crate::contract::reply),
     ));
 
     let pair_addr = app
@@ -117,15 +331,10 @@ fn provide_liquidity() {
     app.set_oracle_contract(Box::new(create_entry_points_testing!(oraiswap_oracle)));
 
     app.set_token_balances(&[
-        (
-            &"liquidity".to_string(),
-            &[(&MOCK_CONTRACT_ADDR.to_string(), &Uint128::from(1000u128))],
-        ),
-        (
-            &"asset".to_string(),
-            &[(&MOCK_CONTRACT_ADDR.to_string(), &Uint128::from(1000u128))],
-        ),
-    ]);
+        ("liquidity", &[(&MOCK_CONTRACT_ADDR.to_string(), 1000u128)]),
+        ("asset", &[(&MOCK_CONTRACT_ADDR.to_string(), 1000u128)]),
+    ])
+    .unwrap();
 
     let asset_addr = app.get_token_addr("asset").unwrap();
 
@@ -139,7 +348,7 @@ fn provide_liquidity() {
                 contract_addr: asset_addr.clone(),
             },
         ],
-        token_code_id: app.token_id,
+        token_code_id: app.token_id(),
         commission_rate: None,
         admin: None,
         operator_fee: None,
@@ -148,7 +357,7 @@ fn provide_liquidity() {
 
     // we can just call .unwrap() to assert this was a success
     let code_id = app.upload(Box::new(
-        create_entry_points_testing!(crate).with_reply(crate::contract::reply),
+        create_entry_points_testing!(crate).with_reply_empty(crate::contract::reply),
     ));
     let pair_addr = app
         .instantiate(code_id, Addr::unchecked("owner"), &msg, &[], "pair")
@@ -264,23 +473,25 @@ fn provide_liquidity() {
         receiver: None,
     };
 
-    let res = app.execute(
-        Addr::unchecked(MOCK_CONTRACT_ADDR),
-        pair_addr.clone(),
-        &msg,
-        &[Coin {
-            denom: ORAI_DENOM.to_string(),
-            amount: Uint128::from(100u128),
-        }],
-    );
+    let error = app
+        .execute(
+            Addr::unchecked(MOCK_CONTRACT_ADDR),
+            pair_addr.clone(),
+            &msg,
+            &[Coin {
+                denom: ORAI_DENOM.to_string(),
+                amount: Uint128::from(100u128),
+            }],
+        )
+        .unwrap_err();
 
-    app.assert_fail(res);
+    println!("provide_liquididty {}", error.root_cause().to_string());
 }
 
 #[test]
 fn withdraw_liquidity() {
     let mut app = MockApp::new(&[(
-        &"addr0000".to_string(),
+        "addr0000",
         &[Coin {
             denom: ORAI_DENOM.to_string(),
             amount: Uint128::from(1000u128),
@@ -289,17 +500,12 @@ fn withdraw_liquidity() {
 
     app.set_oracle_contract(Box::new(create_entry_points_testing!(oraiswap_oracle)));
 
-    app.set_tax(
-        Decimal::zero(),
-        &[(&ORAI_DENOM.to_string(), &Uint128::from(1000000u128))],
-    );
+    app.set_tax(Decimal::zero(), &[(&ORAI_DENOM.to_string(), 1000000u128)]);
 
     app.set_token_contract(Box::new(create_entry_points_testing!(oraiswap_token)));
 
-    app.set_token_balances(&[(
-        &"liquidity".to_string(),
-        &[(&"addr0000".to_string(), &Uint128::from(1000u128))],
-    )]);
+    app.set_token_balances(&[("liquidity", &[("addr0000", 1000u128)])])
+        .unwrap();
 
     let liquidity_addr = app.get_token_addr("liquidity").unwrap();
 
@@ -313,7 +519,7 @@ fn withdraw_liquidity() {
                 contract_addr: liquidity_addr.clone(),
             },
         ],
-        token_code_id: app.token_id,
+        token_code_id: app.token_id(),
         commission_rate: None,
         admin: None,
         operator_fee: None,
@@ -321,7 +527,7 @@ fn withdraw_liquidity() {
     };
 
     let pair_id = app.upload(Box::new(
-        create_entry_points_testing!(crate).with_reply(crate::contract::reply),
+        create_entry_points_testing!(crate).with_reply_empty(crate::contract::reply),
     ));
     // we can just call .unwrap() to assert this was a success
     let pair_addr = app
@@ -377,7 +583,7 @@ fn withdraw_liquidity() {
     // withdraw liquidity
     let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
         sender: "addr0000".into(),
-        msg: to_binary(&Cw20HookMsg::WithdrawLiquidity {}).unwrap(),
+        msg: to_json_binary(&Cw20HookMsg::WithdrawLiquidity {}).unwrap(),
         amount: Uint128::from(100u128),
     });
 
@@ -421,19 +627,11 @@ fn test_pool_whitelist_for_trader() {
     app.set_oracle_contract(Box::new(create_entry_points_testing!(oraiswap_oracle)));
 
     app.set_token_balances(&[
-        (
-            &"liquidity".to_string(),
-            &[(&MOCK_CONTRACT_ADDR.to_string(), &Uint128::from(1000u128))],
-        ),
-        (
-            &"asset".to_string(),
-            &[(&MOCK_CONTRACT_ADDR.to_string(), &Uint128::from(1000u128))],
-        ),
-        (
-            &"asset".to_string(),
-            &[(&"addr0000".to_string(), &Uint128::from(1000u128))],
-        ),
-    ]);
+        ("liquidity", &[(&MOCK_CONTRACT_ADDR.to_string(), 1000u128)]),
+        ("asset", &[(&MOCK_CONTRACT_ADDR.to_string(), 1000u128)]),
+        ("asset", &[("addr0000", 1000u128)]),
+    ])
+    .unwrap();
 
     let asset_addr = app.get_token_addr("asset").unwrap();
 
@@ -447,7 +645,7 @@ fn test_pool_whitelist_for_trader() {
                 contract_addr: asset_addr.clone(),
             },
         ],
-        token_code_id: app.token_id,
+        token_code_id: app.token_id(),
         commission_rate: None,
         admin: Some(Addr::unchecked("admin")),
         operator_fee: None,
@@ -456,7 +654,7 @@ fn test_pool_whitelist_for_trader() {
 
     // we can just call .unwrap() to assert this was a success
     let code_id = app.upload(Box::new(
-        create_entry_points_testing!(crate).with_reply(crate::contract::reply),
+        create_entry_points_testing!(crate).with_reply_empty(crate::contract::reply),
     ));
     let pair_addr = app
         .instantiate(code_id, Addr::unchecked("owner"), &msg, &[], "pair")
@@ -519,13 +717,15 @@ fn test_pool_whitelist_for_trader() {
         )
         .unwrap();
     // enable whitelisted pool fail
-    let res = app.execute(
-        Addr::unchecked("addr000"),
-        pair_addr.clone(),
-        &ExecuteMsg::EnableWhitelist { status: true },
-        &[],
-    );
-    app.assert_fail(res);
+    let error = app
+        .execute(
+            Addr::unchecked("addr000"),
+            pair_addr.clone(),
+            &ExecuteMsg::EnableWhitelist { status: true },
+            &[],
+        )
+        .unwrap_err();
+    assert!(error.root_cause().to_string().contains("Unauthorized"));
 
     // enable whitelisted pool success
     app.execute(
@@ -567,16 +767,18 @@ fn test_pool_whitelist_for_trader() {
         receiver: None,
     };
 
-    let res = app.execute(
-        Addr::unchecked("addr0000"),
-        pair_addr.clone(),
-        &msg,
-        &[Coin {
-            denom: ORAI_DENOM.to_string(),
-            amount: Uint128::from(100u128),
-        }],
-    );
-    app.assert_fail(res);
+    let error = app
+        .execute(
+            Addr::unchecked("addr0000"),
+            pair_addr.clone(),
+            &msg,
+            &[Coin {
+                denom: ORAI_DENOM.to_string(),
+                amount: Uint128::from(100u128),
+            }],
+        )
+        .unwrap_err();
+    assert!(error.root_cause().to_string().contains("Cannot Sub with 0"));
 
     // whitelist trader can join poll
     app.execute(
@@ -603,16 +805,18 @@ fn test_pool_whitelist_for_trader() {
         to: None,
     };
 
-    let res = app.execute(
-        Addr::unchecked("addr0000"),
-        pair_addr.clone(),
-        &swap_msg,
-        &[Coin {
-            denom: ORAI_DENOM.to_string(),
-            amount: Uint128::from(100u128),
-        }],
-    );
-    app.assert_fail(res);
+    let error = app
+        .execute(
+            Addr::unchecked("addr0000"),
+            pair_addr.clone(),
+            &swap_msg,
+            &[Coin {
+                denom: ORAI_DENOM.to_string(),
+                amount: Uint128::from(100u128),
+            }],
+        )
+        .unwrap_err();
+    assert!(error.root_cause().to_string().contains("Cannot Sub with 0"));
 
     // success swap
     app.execute(
@@ -643,13 +847,14 @@ fn test_update_executor() {
     app.set_token_balances(&[
         (
             &"liquidity".to_string(),
-            &[(&MOCK_CONTRACT_ADDR.to_string(), &Uint128::from(1000u128))],
+            &[(&MOCK_CONTRACT_ADDR.to_string(), 1000u128)],
         ),
         (
             &"asset".to_string(),
-            &[(&MOCK_CONTRACT_ADDR.to_string(), &Uint128::from(1000u128))],
+            &[(&MOCK_CONTRACT_ADDR.to_string(), 1000u128)],
         ),
-    ]);
+    ])
+    .unwrap();
 
     let asset_addr = app.get_token_addr("asset").unwrap();
 
@@ -663,7 +868,7 @@ fn test_update_executor() {
                 contract_addr: asset_addr.clone(),
             },
         ],
-        token_code_id: app.token_id,
+        token_code_id: app.token_id(),
         commission_rate: None,
         admin: Some(Addr::unchecked("admin")),
         operator_fee: None,
@@ -672,7 +877,7 @@ fn test_update_executor() {
 
     // we can just call .unwrap() to assert this was a success
     let code_id = app.upload(Box::new(
-        create_entry_points_testing!(crate).with_reply(crate::contract::reply),
+        create_entry_points_testing!(crate).with_reply_empty(crate::contract::reply),
     ));
     let pair_addr = app
         .instantiate(code_id, Addr::unchecked("owner"), &msg, &[], "pair")
@@ -685,15 +890,17 @@ fn test_update_executor() {
     assert!(operator.is_empty());
 
     // try update executor fail, unauthorize
-    let res = app.execute(
-        Addr::unchecked("addr"),
-        pair_addr.clone(),
-        &ExecuteMsg::UpdateOperator {
-            operator: Some("operator".to_string()),
-        },
-        &[],
-    );
-    app.assert_fail(res);
+    let error = app
+        .execute(
+            Addr::unchecked("addr"),
+            pair_addr.clone(),
+            &ExecuteMsg::UpdateOperator {
+                operator: Some("operator".to_string()),
+            },
+            &[],
+        )
+        .unwrap_err();
+    assert!(error.root_cause().to_string().contains("Unauthorized"));
 
     // update successful
     app.execute(
@@ -730,23 +937,18 @@ fn test_swap_with_operator_fee() {
     app.set_token_balances(&[
         (
             &"liquidity".to_string(),
-            &[(
-                &MOCK_CONTRACT_ADDR.to_string(),
-                &Uint128::from(1000000000u128),
-            )],
+            &[(&MOCK_CONTRACT_ADDR.to_string(), 1000000000u128)],
         ),
         (
             &"asset".to_string(),
-            &[(
-                &MOCK_CONTRACT_ADDR.to_string(),
-                &Uint128::from(1000000000u128),
-            )],
+            &[(&MOCK_CONTRACT_ADDR.to_string(), 1000000000u128)],
         ),
         (
             &"asset".to_string(),
-            &[(&"addr0000".to_string(), &Uint128::from(1000000000u128))],
+            &[(&"addr0000".to_string(), 1000000000u128)],
         ),
-    ]);
+    ])
+    .unwrap();
 
     let asset_addr = app.get_token_addr("asset").unwrap();
 
@@ -760,7 +962,7 @@ fn test_swap_with_operator_fee() {
                 contract_addr: asset_addr.clone(),
             },
         ],
-        token_code_id: app.token_id,
+        token_code_id: app.token_id(),
         commission_rate: None,
         admin: Some(Addr::unchecked("admin")),
         operator_fee: None,
@@ -769,7 +971,7 @@ fn test_swap_with_operator_fee() {
 
     // we can just call .unwrap() to assert this was a success
     let code_id = app.upload(Box::new(
-        create_entry_points_testing!(crate).with_reply(crate::contract::reply),
+        create_entry_points_testing!(crate).with_reply_empty(crate::contract::reply),
     ));
     let pair_addr = app
         .instantiate(code_id, Addr::unchecked("owner"), &msg, &[], "pair")

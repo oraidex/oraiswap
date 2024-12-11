@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{to_binary, Addr, Coin, Decimal, Uint128};
+use cosmwasm_std::{to_json_binary, Addr, Coin, Decimal, Uint128};
 use oraiswap::{
     asset::{Asset, AssetInfo, ORAI_DENOM},
     create_entry_points_testing,
@@ -137,17 +137,12 @@ fn simulate_submit_orders(
     app.set_token_contract(Box::new(create_entry_points_testing!(oraiswap_token)));
 
     // init token
-    let usdt_addr = app.set_token_balances(&[(&"usdt".to_string(), &[])]);
+    let usdt_addr = app.set_token_balances(&[("usdt", &[])]).unwrap();
 
     for sender in senders.iter() {
-        app.set_balances(&[(
-            &ORAI_DENOM.to_string(),
-            &[(sender, &Uint128::from(10000000000000u128))],
-        )]);
-        app.set_token_balances(&[(
-            &"usdt".to_string(),
-            &[(sender, &Uint128::from(10000000000000u128))],
-        )]);
+        app.set_balances(&[(&ORAI_DENOM.to_string(), &[(sender, 10000000000000u128)])]);
+        app.set_token_balances(&[("usdt", &[(sender, 10000000000000u128)])])
+            .unwrap();
     }
 
     let msg = InstantiateMsg {
@@ -207,7 +202,7 @@ fn simulate_submit_orders(
                     let msg = cw20::Cw20ExecuteMsg::Send {
                         contract: orderbook_addr.to_string(),
                         amount: offer_amount, // Fund must be equal to offer amount
-                        msg: to_binary(&Cw20HookMsg::SubmitOrder {
+                        msg: to_json_binary(&Cw20HookMsg::SubmitOrder {
                             direction: OrderDirection::Buy,
                             assets: [
                                 Asset {
@@ -257,7 +252,7 @@ fn simulate_submit_orders(
                     let msg = cw20::Cw20ExecuteMsg::Send {
                         contract: orderbook_addr.to_string(),
                         amount: offer_amount, // Fund must be equal to offer amount
-                        msg: to_binary(&Cw20HookMsg::SubmitMarketOrder {
+                        msg: to_json_binary(&Cw20HookMsg::SubmitMarketOrder {
                             direction: OrderDirection::Buy,
                             asset_infos: [orai_asset_info.clone(), usdt_asset_info.clone()],
                             slippage,

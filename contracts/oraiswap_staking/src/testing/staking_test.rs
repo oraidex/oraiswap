@@ -4,7 +4,7 @@ use cosmwasm_std::testing::{
     mock_dependencies, mock_dependencies_with_balance, mock_env, mock_info,
 };
 use cosmwasm_std::{
-    attr, coin, from_binary, to_binary, Addr, Api, BankMsg, Coin, CosmosMsg, Decimal, StdError,
+    attr, coin, from_json, to_json_binary, Addr, Api, BankMsg, Coin, CosmosMsg, Decimal, StdError,
     SubMsg, Uint128, WasmMsg,
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
@@ -90,7 +90,7 @@ fn test_bond_tokens() {
     let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
         sender: "addr".to_string(),
         amount: Uint128::from(100u128),
-        msg: to_binary(&Cw20HookMsg::Bond {}).unwrap(),
+        msg: to_json_binary(&Cw20HookMsg::Bond {}).unwrap(),
     });
 
     let info = mock_info("staking", &[]);
@@ -104,7 +104,7 @@ fn test_bond_tokens() {
         },
     )
     .unwrap();
-    let res: RewardInfoResponse = from_binary(&data).unwrap();
+    let res: RewardInfoResponse = from_json(&data).unwrap();
     assert_eq!(
         res,
         RewardInfoResponse {
@@ -128,7 +128,7 @@ fn test_bond_tokens() {
     )
     .unwrap();
 
-    let pool_info: PoolInfoResponse = from_binary(&data).unwrap();
+    let pool_info: PoolInfoResponse = from_json(&data).unwrap();
     assert_eq!(
         pool_info,
         PoolInfoResponse {
@@ -145,7 +145,7 @@ fn test_bond_tokens() {
     let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
         sender: "addr2".to_string(),
         amount: Uint128::from(100u128),
-        msg: to_binary(&Cw20HookMsg::Bond {}).unwrap(),
+        msg: to_json_binary(&Cw20HookMsg::Bond {}).unwrap(),
     });
     let info = mock_info("staking", &[]);
     let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
@@ -158,7 +158,7 @@ fn test_bond_tokens() {
         },
     )
     .unwrap();
-    let pool_info: PoolInfoResponse = from_binary(&data).unwrap();
+    let pool_info: PoolInfoResponse = from_json(&data).unwrap();
     assert_eq!(
         pool_info,
         PoolInfoResponse {
@@ -224,7 +224,7 @@ fn test_unbond() {
     let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
         sender: "addr".to_string(),
         amount: Uint128::from(100u128),
-        msg: to_binary(&Cw20HookMsg::Bond {}).unwrap(),
+        msg: to_json_binary(&Cw20HookMsg::Bond {}).unwrap(),
     });
     let info = mock_info("staking", &[]);
     let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
@@ -287,7 +287,7 @@ fn test_unbond() {
         vec![
             SubMsg::new(WasmMsg::Execute {
                 contract_addr: "staking".to_string(),
-                msg: to_binary(&Cw20ExecuteMsg::Transfer {
+                msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
                     recipient: "addr".to_string(),
                     amount: Uint128::from(100u128),
                 })
@@ -313,7 +313,7 @@ fn test_unbond() {
         },
     )
     .unwrap();
-    let pool_info: PoolInfoResponse = from_binary(&data).unwrap();
+    let pool_info: PoolInfoResponse = from_json(&data).unwrap();
     assert_eq!(
         pool_info,
         PoolInfoResponse {
@@ -335,7 +335,7 @@ fn test_unbond() {
         },
     )
     .unwrap();
-    let res: RewardInfoResponse = from_binary(&data).unwrap();
+    let res: RewardInfoResponse = from_json(&data).unwrap();
     assert_eq!(
         res,
         RewardInfoResponse {
@@ -347,7 +347,7 @@ fn test_unbond() {
 
 #[test]
 fn test_auto_stake() {
-    let mut app = MockApp::new(&[(&"addr".to_string(), &[coin(10000000000u128, ORAI_DENOM)])]);
+    let mut app = MockApp::new(&[("addr", &[coin(10000000000u128, ORAI_DENOM)])]);
 
     app.set_oracle_contract(Box::new(create_entry_points_testing!(oraiswap_oracle)));
 
@@ -356,26 +356,23 @@ fn test_auto_stake() {
     app.set_factory_and_pair_contract(
         Box::new(
             create_entry_points_testing!(oraiswap_factory)
-                .with_reply(oraiswap_factory::contract::reply),
+                .with_reply_empty(oraiswap_factory::contract::reply),
         ),
         Box::new(
-            create_entry_points_testing!(oraiswap_pair).with_reply(oraiswap_pair::contract::reply),
+            create_entry_points_testing!(oraiswap_pair)
+                .with_reply_empty(oraiswap_pair::contract::reply),
         ),
     );
 
     let asset_addr = app.create_token("asset");
     let reward_addr = app.create_token("reward");
+
     // update other contract token balance
     app.set_token_balances(&[
-        (
-            &"reward".to_string(),
-            &[(&"addr".to_string(), &Uint128::from(10000000000u128))],
-        ),
-        (
-            &"asset".to_string(),
-            &[(&"addr".to_string(), &Uint128::from(10000000000u128))],
-        ),
-    ]);
+        ("reward", &[("addr", 10000000000u128)]),
+        ("asset", &[("addr", 10000000000u128)]),
+    ])
+    .unwrap();
 
     let asset_infos = [
         AssetInfo::NativeToken {
@@ -494,7 +491,7 @@ fn test_auto_stake() {
         slippage_tolerance: None,
     };
 
-    let res = app.execute(
+    app.execute(
         Addr::unchecked("addr"),
         staking_addr.clone(),
         &msg,
@@ -502,9 +499,8 @@ fn test_auto_stake() {
             denom: ORAI_DENOM.to_string(),
             amount: Uint128::from(100u128),
         }],
-    );
-
-    app.assert_fail(res);
+    )
+    .unwrap_err();
 
     // no native asset
     let msg = ExecuteMsg::AutoStake {
@@ -525,9 +521,8 @@ fn test_auto_stake() {
         slippage_tolerance: None,
     };
 
-    let res = app.execute(Addr::unchecked("addr"), staking_addr.clone(), &msg, &[]);
-
-    app.assert_fail(res);
+    app.execute(Addr::unchecked("addr"), staking_addr.clone(), &msg, &[])
+        .unwrap_err();
 
     let msg = ExecuteMsg::AutoStake {
         assets: [
@@ -548,8 +543,13 @@ fn test_auto_stake() {
     };
 
     // attempt with no coins
-    let res = app.execute(Addr::unchecked("addr"), staking_addr.clone(), &msg, &[]);
-    app.assert_fail(res);
+    let error = app
+        .execute(Addr::unchecked("addr"), staking_addr.clone(), &msg, &[])
+        .unwrap_err();
+    assert!(error
+        .root_cause()
+        .to_string()
+        .contains("Native token balance mismatch between the argument and the transferred"));
 
     let _res = app
         .execute(
@@ -579,8 +579,10 @@ fn test_auto_stake() {
     };
 
     // unauthorized attempt
-    let res = app.execute(Addr::unchecked("addr"), staking_addr.clone(), &msg, &[]);
-    app.assert_fail(res);
+    let error = app
+        .execute(Addr::unchecked("addr"), staking_addr.clone(), &msg, &[])
+        .unwrap_err();
+    assert!(error.root_cause().to_string().contains("unauthorized"));
 
     // successfull attempt
 

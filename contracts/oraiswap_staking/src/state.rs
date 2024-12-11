@@ -57,7 +57,7 @@ pub struct MigrationParams {
 }
 
 pub fn remove_pool_info(storage: &mut dyn Storage, asset_key: &[u8]) {
-    Bucket::<PoolInfo>::new(storage, PREFIX_POOL_INFO).remove(&asset_key);
+    Bucket::<PoolInfo>::new(storage, PREFIX_POOL_INFO).remove(asset_key);
 }
 
 pub fn store_pool_info(

@@ -64,8 +64,8 @@ pub fn query_smart_route(
         0usize,          // wanted route index
         Uint128::zero(), // actual minimum receive
     );
-    for (index, route) in pool_routes.to_owned().into_iter().enumerate() {
-        match router.simulate_swap(&deps.querier, offer_amount, route) {
+    for (index, route) in pool_routes.iter().enumerate() {
+        match router.simulate_swap(&deps.querier, offer_amount, route.clone()) {
             Ok(simulate_result) => {
                 let prev_route_minimum_receive = route_simulate_result.1;
                 match route_mode {

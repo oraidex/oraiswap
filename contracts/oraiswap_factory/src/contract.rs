@@ -4,7 +4,7 @@ use std::convert::TryFrom;
 use cosmwasm_std::entry_point;
 
 use cosmwasm_std::{
-    to_binary, Addr, Binary, CanonicalAddr, Deps, DepsMut, Env, MessageInfo, Reply, Response,
+    to_json_binary, Addr, Binary, CanonicalAddr, Deps, DepsMut, Env, MessageInfo, Reply, Response,
     StdError, StdResult, SubMsg, WasmMsg,
 };
 use oraiswap::error::ContractError;
@@ -176,7 +176,7 @@ pub fn execute_create_pair(
                 funds: vec![],
                 admin: Some(pair_admin.clone()),
                 label: "pair".to_string(),
-                msg: to_binary(&PairInstantiateMsg {
+                msg: to_json_binary(&PairInstantiateMsg {
                     oracle_addr: deps.api.addr_humanize(&config.oracle_addr)?,
                     asset_infos: asset_infos.clone(),
                     token_code_id: config.token_code_id,
@@ -282,10 +282,10 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Config {} => to_binary(&query_config(deps)?),
-        QueryMsg::Pair { asset_infos } => to_binary(&query_pair(deps, asset_infos)?),
+        QueryMsg::Config {} => to_json_binary(&query_config(deps)?),
+        QueryMsg::Pair { asset_infos } => to_json_binary(&query_pair(deps, asset_infos)?),
         QueryMsg::Pairs { start_after, limit } => {
-            to_binary(&query_pairs(deps, start_after, limit)?)
+            to_json_binary(&query_pairs(deps, start_after, limit)?)
         }
     }
 }

@@ -1,0 +1,34 @@
+[package]
+name = "oraiswap-mixed-router"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+readme = { workspace = true }
+exclude = { workspace = true }
+description = "A Oraiswap router contract - provides multi-step operations to facilitate single sign operation"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# for quicker tests, cargo test --lib
+# for more explicit tests, cargo test --features=backtraces
+backtraces = ["cosmwasm-std/backtraces"]
+
+[dependencies]
+cw20 = { workspace = true }
+cosmwasm-std = { workspace = true }
+oraiswap = { workspace = true }
+cw-storage-plus = { workspace = true }
+cosmwasm-schema = { workspace = true }
+oraiswap-v3 = { workspace = true }
+
+[dev-dependencies]
+cosmwasm-storage = { workspace = true }
+oraiswap-oracle = { workspace = true }
+oraiswap-token = { workspace = true }
+oraiswap-pair = { workspace = true }
+oraiswap-factory = { workspace = true }

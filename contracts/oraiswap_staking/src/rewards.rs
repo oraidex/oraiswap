@@ -47,7 +47,7 @@ pub fn deposit_reward(
             normal_reward += pool_info.pending_reward;
             let normal_reward_per_bond =
                 Decimal::from_ratio(normal_reward, pool_info.total_bond_amount);
-            pool_info.reward_index = pool_info.reward_index + normal_reward_per_bond;
+            pool_info.reward_index += normal_reward_per_bond;
             pool_info.pending_reward = Uint128::zero();
         }
 
@@ -71,7 +71,7 @@ pub fn withdraw_reward(
 ) -> StdResult<Response> {
     validate_migrate_store_status(deps.storage)?;
     let staker_addr = deps.api.addr_canonicalize(info.sender.as_str())?;
-    let asset_key = staking_token.map_or(None, |a| {
+    let asset_key = staking_token.and_then(|a| {
         deps.api
             .addr_canonicalize(a.as_str())
             .map(|a| a.to_vec())
@@ -83,9 +83,8 @@ pub fn withdraw_reward(
     let messages = reward_assets
         .into_iter()
         .map(|ra| {
-            Ok(ra
-                .to_normal(deps.api)?
-                .into_msg(None, &deps.querier, info.sender.clone())?)
+            ra.to_normal(deps.api)?
+                .into_msg(None, &deps.querier, info.sender.clone())
         })
         .collect::<StdResult<Vec<CosmosMsg>>>()?;
 
@@ -109,7 +108,7 @@ pub fn withdraw_reward_others(
         return Err(StdError::generic_err("unauthorized"));
     }
 
-    let asset_key = staker_addr.map_or(None, |a| {
+    let asset_key = staker_addr.and_then(|a| {
         deps.api
             .addr_canonicalize(a.as_str())
             .map(|a| a.to_vec())
@@ -151,7 +150,7 @@ pub fn process_reward_assets(
 
     // single reward withdraw, using Vec to store reference variable in local function
     let reward_pairs = if let Some(asset_key) = asset_key {
-        let reward_info = rewards_bucket.may_load(&asset_key)?;
+        let reward_info = rewards_bucket.may_load(asset_key)?;
         if let Some(reward_info) = reward_info {
             vec![(asset_key.to_vec(), reward_info)]
         } else {
@@ -261,7 +260,7 @@ pub fn query_all_reward_infos(
     let asset_key = deps.api.addr_canonicalize(staking_token.as_str())?;
 
     let start_after = start_after
-        .map_or(None, |a| deps.api.addr_canonicalize(a.as_str()).ok())
+        .and_then(|a| deps.api.addr_canonicalize(a.as_str()).ok())
         .map(|c| c.to_vec());
 
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
@@ -323,7 +322,7 @@ fn _read_reward_infos_response(
             let pending_withdraw = reward_info
                 .pending_withdraw
                 .into_iter()
-                .map(|pw| Ok(pw.to_normal(api)?))
+                .map(|pw| pw.to_normal(api))
                 .collect::<StdResult<Vec<Asset>>>()?;
 
             Ok(RewardInfoResponseItem {

@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+message Memo {
+
+  UserSwap user_swap = 1;
+  // string because the minimum receive may be very high due to decimal points
+  string minimum_receive = 2;
+  uint64 timeout_timestamp = 3;
+  PostAction post_swap_action = 4;
+  string recovery_addr = 5;
+
+  // we dont need swap amount since it will be sent via cw20 or native, and we
+  // use that
+  message SwapExactAssetIn { repeated SwapOperation operations = 1; }
+
+  message SmartSwapExactAssetIn { repeated Route routes = 1; }
+
+  message Route {
+    string offer_amount = 1;
+    repeated SwapOperation operations = 2;
+  }
+
+  message SwapOperation {
+    string poolId = 1;
+    string denomIn = 2;
+    string denomOut = 3;
+  }
+
+  // if none is provided -> error, if more than one attributes are provided ->
+  // error
+  message UserSwap {
+    // or adapter name so that the smart router can redirect to the right swap
+    // router.
+    string swap_venue_name = 1;
+    optional SwapExactAssetIn swap_exact_asset_in = 2;
+    optional SmartSwapExactAssetIn smart_swap_exact_asset_in = 3;
+  }
+
+  // Can possibly have both? -> if both then always contract_call first then ibc
+  // transfer
+  message PostAction {
+    optional IbcTransfer ibc_transfer_msg = 1;
+    optional IbcWasmTransfer ibc_wasm_transfer_msg = 2;
+    optional ContractCall contract_call = 3;
+    optional Transfer transfer_msg = 4;
+  }
+
+  message IbcTransfer {
+    string source_channel = 1;
+    string source_port = 2;
+    string receiver = 3;
+    string memo = 4;
+    string recover_address = 5;
+  }
+
+  message IbcWasmTransfer {
+    /// the local ibc endpoint you want to send tokens back on
+    string local_channel_id = 1;
+    string remote_address = 2; // can be 0x or bech32
+    /// remote denom so that we know what denom to filter when we query based on
+    /// the asset info. Most likely be: oraib0x... or eth0x...
+    string remote_denom = 3;
+    /// How long the packet lives in seconds. If not specified, use
+    /// default_timeout
+    optional uint64 timeout = 4;
+    /// metadata of the transfer to suit the new fungible token transfer
+    optional string memo = 5;
+  }
+
+  message ContractCall {
+    string contract_address = 1;
+    string msg = 2;
+  }
+
+  message Transfer {
+    string to_address = 1;
+  }
+}

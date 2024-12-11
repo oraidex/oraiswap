@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 use cw2::set_contract_version;
 use oraiswap::router::RouterController;
 
@@ -77,12 +77,12 @@ pub fn execute(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Config {} => to_binary(&query_config(deps)?),
+        QueryMsg::Config {} => to_json_binary(&query_config(deps)?),
         QueryMsg::GetRoute {
             input_info,
             output_info,
             route_index,
-        } => to_binary(&query_route(
+        } => to_json_binary(&query_route(
             deps,
             &input_info.to_string(),
             &output_info.to_string(),
@@ -91,7 +91,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetRoutes {
             input_info,
             output_info,
-        } => to_binary(&query_routes(
+        } => to_json_binary(&query_routes(
             deps,
             &input_info.to_string(),
             &output_info.to_string(),
@@ -101,7 +101,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             output_info,
             offer_amount,
             route_mode,
-        } => to_binary(&query_smart_route(
+        } => to_json_binary(&query_smart_route(
             deps,
             input_info,
             output_info,

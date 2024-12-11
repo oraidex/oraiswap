@@ -1,5 +1,5 @@
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-use cosmwasm_std::{from_binary, Addr, Coin, DepsMut, StdError};
+use cosmwasm_std::{from_json, Addr, Coin, DepsMut, StdError};
 use oraiswap::asset::AssetInfo;
 use oraiswap::router::SwapOperation;
 
@@ -33,7 +33,7 @@ fn proper_initialization() {
 
     // it worked, let's query the state
     let res: GetConfigResponse =
-        from_binary(&contract::query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap())
+        from_json(&contract::query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap())
             .unwrap();
     assert_eq!(owner, res.owner);
 }
@@ -46,7 +46,7 @@ fn proper_update_state() {
 
     // it worked, let's query the state
     let res: GetConfigResponse =
-        from_binary(&contract::query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap())
+        from_json(&contract::query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap())
             .unwrap();
     assert_eq!(owner, res.owner);
 
@@ -70,7 +70,7 @@ fn proper_update_state() {
     contract::execute(deps.as_mut(), mock_env(), owner_info, msg).unwrap();
 
     let res: GetConfigResponse =
-        from_binary(&contract::query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap())
+        from_json(&contract::query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap())
             .unwrap();
     assert_eq!(good_addr, res.owner);
     assert_eq!(res.router, "new_router");
@@ -142,7 +142,7 @@ fn test_set_and_get_route() {
     .unwrap();
 
     // try querying all the routes. Should return 2 routes
-    let routes: GetRoutesResponse = from_binary(
+    let routes: GetRoutesResponse = from_json(
         &contract::query(
             deps.as_ref(),
             mock_env(),
@@ -157,7 +157,7 @@ fn test_set_and_get_route() {
     assert_eq!(routes.pool_routes.len(), 2);
 
     // try querying the first route
-    let route: GetRouteResponse = from_binary(
+    let route: GetRouteResponse = from_json(
         &contract::query(
             deps.as_ref(),
             mock_env(),
@@ -173,7 +173,7 @@ fn test_set_and_get_route() {
     assert_eq!(route.pool_route, orai_usdc_simple_ops.clone());
 
     // try querying the 2nd route
-    let route: GetRouteResponse = from_binary(
+    let route: GetRouteResponse = from_json(
         &contract::query(
             deps.as_ref(),
             mock_env(),
@@ -260,7 +260,7 @@ fn test_set_reversed_route() {
     .unwrap();
 
     // try querying all the routes of usdc->orai. Should return 2 routes
-    let routes: GetRoutesResponse = from_binary(
+    let routes: GetRoutesResponse = from_json(
         &contract::query(
             deps.as_ref(),
             mock_env(),
@@ -275,7 +275,7 @@ fn test_set_reversed_route() {
     assert_eq!(routes.pool_routes.len(), 2);
 
     // try querying the first route
-    let route: GetRouteResponse = from_binary(
+    let route: GetRouteResponse = from_json(
         &contract::query(
             deps.as_ref(),
             mock_env(),
@@ -305,7 +305,7 @@ fn test_set_reversed_route() {
     );
 
     // try querying the 2nd route
-    let route: GetRouteResponse = from_binary(
+    let route: GetRouteResponse = from_json(
         &contract::query(
             deps.as_ref(),
             mock_env(),
@@ -406,7 +406,7 @@ fn test_delete_route() {
     .unwrap();
 
     // try querying all the routes of usdc->orai. Should return 2 routes
-    let routes: GetRoutesResponse = from_binary(
+    let routes: GetRoutesResponse = from_json(
         &contract::query(
             deps.as_ref(),
             mock_env(),
@@ -446,7 +446,7 @@ fn test_delete_route() {
     .unwrap();
 
     // try querying, now we only have one route left, which is the orai-oraix-usdc route
-    let routes: GetRoutesResponse = from_binary(
+    let routes: GetRoutesResponse = from_json(
         &contract::query(
             deps.as_ref(),
             mock_env(),
@@ -460,7 +460,7 @@ fn test_delete_route() {
     .unwrap();
     assert_eq!(routes.pool_routes.len(), 1);
 
-    let route: GetRouteResponse = from_binary(
+    let route: GetRouteResponse = from_json(
         &contract::query(
             deps.as_ref(),
             mock_env(),

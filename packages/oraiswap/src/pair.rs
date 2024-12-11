@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 
 use crate::{
-    asset::{Asset, AssetInfo, PairInfo},
+    asset::{Asset, AssetInfo, PairInfo, PairInfoRaw},
     error::ContractError,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
@@ -65,7 +65,12 @@ pub enum ExecuteMsg {
     DeregisterTrader {
         traders: Vec<Addr>,
     },
-    // update pool info
+    RegisterWithdrawLp {
+        providers: Vec<Addr>,
+    },
+    DeregisterWithdrawLp {
+        providers: Vec<Addr>,
+    },
     UpdatePoolInfo {
         commission_rate: Option<String>,
         operator_fee: Option<String>,
@@ -149,6 +154,7 @@ pub struct ReverseSimulationResponse {
 #[cw_serde]
 pub struct MigrateMsg {
     pub admin: Option<String>,
+    pub asset_infos: Option<[AssetInfo; 2]>,
 }
 
 pub fn compute_swap(
@@ -229,12 +235,8 @@ pub fn compute_offer_amount(
     let commission_amount = before_commission_deduction * commission_rate;
 
     Ok((
-        offer_amount.try_into().map_err(|err| StdError::from(err))?,
-        spread_amount
-            .try_into()
-            .map_err(|err| StdError::from(err))?,
-        commission_amount
-            .try_into()
-            .map_err(|err| StdError::from(err))?,
+        offer_amount.try_into().map_err(StdError::from)?,
+        spread_amount.try_into().map_err(StdError::from)?,
+        commission_amount.try_into().map_err(StdError::from)?,
     ))
 }

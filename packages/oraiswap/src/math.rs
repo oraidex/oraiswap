@@ -17,7 +17,7 @@ impl Converter128 for Uint128 {
         Decimal::one()
             .checked_div(denominator)
             .map_err(|err| StdError::generic_err(err.to_string()))
-            .map(|coeff| self.clone() * coeff)
+            .map(|coeff| *self * coeff)
     }
 }
 

@@ -13,9 +13,10 @@ fn create_pair() {
     app.set_oracle_contract(Box::new(create_entry_points_testing!(oraiswap_oracle)));
 
     app.set_factory_and_pair_contract(
-        Box::new(create_entry_points_testing!(crate).with_reply(crate::contract::reply)),
+        Box::new(create_entry_points_testing!(crate).with_reply_empty(crate::contract::reply)),
         Box::new(
-            create_entry_points_testing!(oraiswap_pair).with_reply(oraiswap_pair::contract::reply),
+            create_entry_points_testing!(oraiswap_pair)
+                .with_reply_empty(oraiswap_pair::contract::reply),
         ),
     );
 
@@ -35,7 +36,8 @@ fn create_pair() {
     let contract_addr = app.create_pair(asset_infos.clone()).unwrap();
 
     // query pair info
-    let pair_info = query_pair_info_from_pair(&app.as_querier(), contract_addr.clone()).unwrap();
+    let pair_info =
+        query_pair_info_from_pair(&app.as_querier().into_empty(), contract_addr.clone()).unwrap();
 
     // should never change commission rate once deployed
     let pair_res = app.query_pair(asset_infos.clone()).unwrap();
@@ -59,9 +61,10 @@ fn add_pair() {
     app.set_oracle_contract(Box::new(create_entry_points_testing!(oraiswap_oracle)));
 
     app.set_factory_and_pair_contract(
-        Box::new(create_entry_points_testing!(crate).with_reply(crate::contract::reply)),
+        Box::new(create_entry_points_testing!(crate).with_reply_empty(crate::contract::reply)),
         Box::new(
-            create_entry_points_testing!(oraiswap_pair).with_reply(oraiswap_pair::contract::reply),
+            create_entry_points_testing!(oraiswap_pair)
+                .with_reply_empty(oraiswap_pair::contract::reply),
         ),
     );
 

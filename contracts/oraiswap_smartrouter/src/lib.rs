@@ -5,8 +5,7 @@ pub mod helpers;
 pub mod query;
 pub mod state;
 
-#[cfg(test)]
-mod contract_tests;
-mod testing;
-
 pub use crate::error::ContractError;
+
+#[cfg(test)]
+mod testing;

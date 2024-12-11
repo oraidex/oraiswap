@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use cosmwasm_std::{Api, Order, Response, StdResult, Storage};
 use oraiswap::asset::AssetInfo;
 
@@ -40,7 +41,7 @@ pub fn migrate_single_asset_key_to_lp_token(
         ));
     };
     // store reward_per_sec to new new key
-    if let Ok(rewards_per_sec) = old_read_rewards_per_sec(storage, &asset_key) {
+    if let Ok(rewards_per_sec) = old_read_rewards_per_sec(storage, asset_key) {
         #[cfg(debug_assertions)]
         api.debug(&format!("rewards_per_sec {:?}", rewards_per_sec));
         store_rewards_per_sec(storage, &pool_info.staking_token, rewards_per_sec)?;
@@ -65,7 +66,7 @@ pub fn migrate_single_asset_key_to_lp_token(
             }
         }
         stakers_store(storage, &pool_info.staking_token).save(staker, &true)?;
-        if let Some(reward) = old_rewards_read(storage, staker).load(asset_key).ok() {
+        if let Ok(reward) = old_rewards_read(storage, staker).load(asset_key) {
             rewards_store(storage, staker).save(&pool_info.staking_token, &reward)?;
         }
     }

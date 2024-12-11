@@ -2,7 +2,7 @@
 use cosmwasm_std::entry_point;
 
 use cosmwasm_std::{
-    from_binary, to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError,
+    from_json, to_json_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError,
     StdResult, Uint128,
 };
 use oraiswap::error::ContractError;
@@ -73,7 +73,7 @@ pub fn execute(
             asset_info,
             prev_balance,
             minimum_receive,
-            receiver.into(),
+            receiver,
         ),
     }
 }
@@ -87,13 +87,13 @@ pub fn receive_cw20(
     let sender = deps.api.addr_validate(&cw20_msg.sender)?;
 
     // throw empty data as well when decoding
-    match from_binary(&cw20_msg.msg)? {
+    match from_json(&cw20_msg.msg)? {
         Cw20HookMsg::ExecuteSwapOperations {
             operations,
             minimum_receive,
             to,
         } => {
-            let receiver = to.map_or(None, |addr| deps.api.addr_validate(addr.as_str()).ok());
+            let receiver = to.and_then(|addr| deps.api.addr_validate(addr.as_str()).ok());
             execute_swap_operations(deps, env, sender, operations, minimum_receive, receiver)
         }
     }
@@ -122,11 +122,11 @@ fn assert_minium_receive(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Config {} => to_binary(&query_config(deps)?),
+        QueryMsg::Config {} => to_json_binary(&query_config(deps)?),
         QueryMsg::SimulateSwapOperations {
             offer_amount,
             operations,
-        } => to_binary(&simulate_swap_operations(deps, offer_amount, operations)?),
+        } => to_json_binary(&simulate_swap_operations(deps, offer_amount, operations)?),
     }
 }
 

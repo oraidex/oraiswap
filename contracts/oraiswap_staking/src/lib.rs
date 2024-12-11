@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 pub mod contract;
 mod legacy;
 mod rewards;

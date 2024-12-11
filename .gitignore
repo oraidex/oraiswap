@@ -27,3 +27,6 @@ datadir/
 
 # orai sync db
 data/
+
+.scannerwork/
+clippy-report.json

@@ -2,8 +2,8 @@ use cosmwasm_schema::serde::de::DeserializeOwned;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 
 use cosmwasm_std::{
-    to_binary, Addr, Api, CanonicalAddr, CosmosMsg, Decimal, QuerierWrapper, StdResult, Uint128,
-    WasmMsg,
+    to_json_binary, Addr, Api, CanonicalAddr, CosmosMsg, Decimal, QuerierWrapper, StdResult,
+    Uint128, WasmMsg,
 };
 
 #[cw_serde]
@@ -155,18 +155,14 @@ impl OracleContract {
         self.0.clone()
     }
 
-    pub fn to_string(&self) -> String {
-        self.0.to_string()
-    }
-
     /// Convert this address to a form fit for storage
     pub fn canonical<A: Api>(&self, api: &A) -> StdResult<OracleCanonicalContract> {
-        let canon = api.addr_canonicalize(&self.0.as_str())?;
+        let canon = api.addr_canonicalize(self.0.as_str())?;
         Ok(OracleCanonicalContract(canon))
     }
 
     pub fn call(&self, msg: ExecuteMsg) -> StdResult<CosmosMsg> {
-        let msg = to_binary(&msg)?;
+        let msg = to_json_binary(&msg)?;
         Ok(WasmMsg::Execute {
             contract_addr: self.to_string(),
             msg,
@@ -239,6 +235,12 @@ impl OracleContract {
         let request = QueryMsg::Contract(OracleContractQuery::ContractInfo {});
 
         self.query(querier, request)
+    }
+}
+
+impl ToString for OracleContract {
+    fn to_string(&self) -> String {
+        self.0.to_string()
     }
 }
 

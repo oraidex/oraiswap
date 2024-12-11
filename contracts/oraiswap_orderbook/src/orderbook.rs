@@ -94,7 +94,7 @@ impl Order {
         Ok(OrderResponse {
             order_id: self.order_id,
             status: self.status,
-            direction: self.direction.clone(),
+            direction: self.direction,
             bidder_addr: api.addr_humanize(&self.bidder_addr)?.to_string(),
             offer_asset: Asset {
                 amount: self.offer_amount,
@@ -364,7 +364,7 @@ impl OrderBook {
             Some(OrderBy::Ascending),
         );
         // guard code
-        if sell_price_list.len() == 0 {
+        if sell_price_list.is_empty() {
             return None;
         }
 
@@ -388,10 +388,10 @@ impl OrderBook {
         );
         // both price lists are applicable because buy list is always larger than the first item of sell list
         let best_sell_price_list = sell_price_list;
-        if best_buy_price_list.len() == 0 || best_sell_price_list.len() == 0 {
+        if best_buy_price_list.is_empty() || best_sell_price_list.is_empty() {
             return None;
         }
-        return Some((best_buy_price_list, best_sell_price_list));
+        Some((best_buy_price_list, best_sell_price_list))
     }
 
     /// matches orders sequentially, starting from buy orders with the highest price, and sell orders with the lowest price

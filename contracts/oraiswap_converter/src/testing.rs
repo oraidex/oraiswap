@@ -1,9 +1,9 @@
 use std::str::FromStr;
 
 use cosmwasm_std::{
-    attr, coin, from_binary,
+    attr, coin, from_json,
     testing::{mock_dependencies, mock_dependencies_with_balance, mock_env, mock_info},
-    to_binary, Addr, BankMsg, Coin, CosmosMsg, Decimal, StdError, SubMsg, Uint128, WasmMsg,
+    to_json_binary, Addr, BankMsg, Coin, CosmosMsg, Decimal, StdError, SubMsg, Uint128, WasmMsg,
 };
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 use oraiswap::{
@@ -96,7 +96,7 @@ fn test_convert_reverse() {
     let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
         amount: Uint128::from(1u64),
         sender: info.sender.to_string(),
-        msg: to_binary(&convert_msg).unwrap(),
+        msg: to_json_binary(&convert_msg).unwrap(),
     });
     let res = execute(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap();
 
@@ -104,7 +104,7 @@ fn test_convert_reverse() {
         res.messages,
         vec![SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: "asset1".to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Transfer {
+            msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
                 recipient: info.sender.to_string(),
                 amount: Uint128::from(10u128.pow(12))
             })
@@ -132,7 +132,7 @@ fn test_convert_reverse() {
     let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
         amount: Uint128::from(1u64),
         sender: info.sender.to_string(),
-        msg: to_binary(&convert_msg).unwrap(),
+        msg: to_json_binary(&convert_msg).unwrap(),
     });
     let res = execute(deps.as_mut(), mock_env(), info.clone(), msg.clone());
 
@@ -175,7 +175,7 @@ fn test_convert_reverse() {
         res.messages,
         vec![SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: "asset1".to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Transfer {
+            msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
                 recipient: info.sender.to_string(),
                 amount: Uint128::from(1u128)
             })
@@ -409,7 +409,7 @@ fn test_convert_with_mint_burn_mechanism() {
         res.messages,
         vec![SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: "asset1".to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Mint {
+            msg: to_json_binary(&Cw20ExecuteMsg::Mint {
                 recipient: "addr".to_string(),
                 amount: Uint128::from(1000000u128)
             })
@@ -422,7 +422,7 @@ fn test_convert_with_mint_burn_mechanism() {
     let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
         sender: "addr".to_string(),
         amount: Uint128::from(1000000u128),
-        msg: to_binary(&Cw20HookMsg::ConvertReverse {
+        msg: to_json_binary(&Cw20HookMsg::ConvertReverse {
             from: AssetInfo::NativeToken {
                 denom: ATOM_DENOM.to_string(),
             },
@@ -442,7 +442,7 @@ fn test_convert_with_mint_burn_mechanism() {
             })),
             SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: "asset1".to_string(),
-                msg: to_binary(&Cw20ExecuteMsg::Burn {
+                msg: to_json_binary(&Cw20ExecuteMsg::Burn {
                     amount: Uint128::from(1000000u128)
                 })
                 .unwrap(),
@@ -474,14 +474,14 @@ fn test_convert_with_mint_burn_mechanism() {
     let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
         sender: "addr".to_string(),
         amount: Uint128::from(1_000_000_000_000_000_000u128),
-        msg: to_binary(&Cw20HookMsg::Convert {}).unwrap(),
+        msg: to_json_binary(&Cw20HookMsg::Convert {}).unwrap(),
     });
     let res = execute(deps.as_mut(), mock_env(), mock_info("asset2", &[]), msg).unwrap();
     assert_eq!(
         res.messages,
         vec![SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: "asset1".to_string(),
-            msg: to_binary(&Cw20ExecuteMsg::Mint {
+            msg: to_json_binary(&Cw20ExecuteMsg::Mint {
                 recipient: "addr".to_string(),
                 amount: Uint128::from(1000000u128)
             })
@@ -494,7 +494,7 @@ fn test_convert_with_mint_burn_mechanism() {
     let msg = ExecuteMsg::Receive(Cw20ReceiveMsg {
         sender: "addr".to_string(),
         amount: Uint128::from(1000000u128),
-        msg: to_binary(&Cw20HookMsg::ConvertReverse {
+        msg: to_json_binary(&Cw20HookMsg::ConvertReverse {
             from: AssetInfo::Token {
                 contract_addr: Addr::unchecked("asset2"),
             },
@@ -507,7 +507,7 @@ fn test_convert_with_mint_burn_mechanism() {
         vec![
             SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: "asset2".to_string(),
-                msg: to_binary(&Cw20ExecuteMsg::Transfer {
+                msg: to_json_binary(&Cw20ExecuteMsg::Transfer {
                     recipient: "addr".to_string(),
                     amount: Uint128::from(1_000_000_000_000_000_000u128),
                 })
@@ -516,7 +516,7 @@ fn test_convert_with_mint_burn_mechanism() {
             })),
             SubMsg::new(CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: "asset1".to_string(),
-                msg: to_binary(&Cw20ExecuteMsg::Burn {
+                msg: to_json_binary(&Cw20ExecuteMsg::Burn {
                     amount: Uint128::from(1000000u128)
                 })
                 .unwrap(),
@@ -564,7 +564,7 @@ fn test_create_pair() {
     let info = mock_info("addr", &[]);
     let _res = execute(deps.as_mut(), mock_env(), info, msg.clone()).unwrap();
 
-    let res: ConvertInfoResponse = from_binary(
+    let res: ConvertInfoResponse = from_json(
         &query(
             deps.as_ref(),
             mock_env(),
@@ -635,7 +635,7 @@ fn test_create_pair() {
     let info = mock_info("addr", &[]);
     let _res = execute(deps.as_mut(), mock_env(), info, msg.clone()).unwrap();
 
-    let res: ConvertInfoResponse = from_binary(
+    let res: ConvertInfoResponse = from_json(
         &query(
             deps.as_ref(),
             mock_env(),
