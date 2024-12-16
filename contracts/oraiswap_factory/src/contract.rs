@@ -4,8 +4,8 @@ use std::convert::TryFrom;
 use cosmwasm_std::entry_point;
 
 use cosmwasm_std::{
-    to_json_binary, Addr, Binary, CanonicalAddr, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
-    MessageInfo, Reply, Response, StdError, StdResult, SubMsg, WasmMsg,
+    to_json_binary, Addr, Binary, CanonicalAddr, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    Reply, Response, StdError, StdResult, SubMsg, WasmMsg,
 };
 use cw20::Cw20ExecuteMsg;
 use oraiswap::error::ContractError;
@@ -14,7 +14,7 @@ use oraiswap::response::MsgInstantiateContractResponse;
 
 use crate::state::{read_pairs, Config, CONFIG, PAIRS};
 
-use oraiswap::asset::{self, pair_key, Asset, AssetInfo, PairInfo, PairInfoRaw};
+use oraiswap::asset::{pair_key, Asset, AssetInfo, PairInfo, PairInfoRaw};
 use oraiswap::factory::{
     ConfigResponse, ExecuteMsg, InstantiateMsg, MigrateMsg, PairsResponse, ProvideLiquidityParams,
     QueryMsg,
@@ -81,10 +81,9 @@ pub fn execute(
             new_code_id,
             msg,
         } => migrate_pair(deps, env, info, contract_addr, new_code_id, msg),
-        ExecuteMsg::ProvideLiquidity {
-            assets,
-            receiver,
-        } => execute_provide_liquidity(deps, env, info, assets, receiver),
+        ExecuteMsg::ProvideLiquidity { assets, receiver } => {
+            execute_provide_liquidity(deps, env, info, assets, receiver)
+        }
     }
 }
 
@@ -157,7 +156,7 @@ pub fn execute_create_pair(
     provide_liquidity: Option<ProvideLiquidityParams>,
 ) -> Result<Response, ContractError> {
     let config: Config = CONFIG.load(deps.storage)?;
-    let raw_infos = [
+    let raw_infos: [oraiswap::asset::AssetInfoRaw; 2] = [
         asset_infos[0].to_raw(deps.api)?,
         asset_infos[1].to_raw(deps.api)?,
     ];
@@ -188,16 +187,13 @@ pub fn execute_create_pair(
     // if provide_liquidity is not None, transfer all cw20 tokens to this contract
     let mut messages: Vec<CosmosMsg> = vec![];
 
-    if let Some(ProvideLiquidityParams {
-        assets,
-        receiver,
-    }) = provide_liquidity
-    {
+    if let Some(ProvideLiquidityParams { assets, receiver }) = provide_liquidity {
+        let receiver = receiver.unwrap_or(info.sender.clone());
         for asset in &assets {
             // If the pool is token contract, then we need to execute TransferFrom msg to receive funds
             if let AssetInfo::Token { contract_addr, .. } = &asset.info {
                 messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: contract_addr.to_owned().into(),
+                    contract_addr: contract_addr.to_string(),
                     msg: to_json_binary(&Cw20ExecuteMsg::TransferFrom {
                         owner: info.sender.to_string(),
                         recipient: env.contract.address.to_string(),
@@ -210,10 +206,7 @@ pub fn execute_create_pair(
 
         messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: env.contract.address.to_string(),
-            msg: to_json_binary(&ExecuteMsg::ProvideLiquidity {
-                assets,
-                receiver,
-            })?,
+            msg: to_json_binary(&ExecuteMsg::ProvideLiquidity { assets, receiver })?,
             funds: info.funds,
         }));
     }
@@ -297,17 +290,19 @@ pub fn execute_add_pair_manually(
 
 pub fn execute_provide_liquidity(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     assets: [Asset; 2],
-    receiver: Option<Addr>,
+    receiver: Addr,
 ) -> Result<Response, ContractError> {
+    if info.sender != env.contract.address {
+        return Err(ContractError::Unauthorized {});
+    }
+
     let asset_infos = [assets[0].info.clone(), assets[1].info.clone()];
     let pair_key = pair_key(&asset_infos.map(|a| a.to_raw(deps.api).unwrap()));
     let pair_raw = PAIRS.load(deps.storage, &pair_key)?;
     let pair_contract = deps.api.addr_humanize(&pair_raw.contract_addr)?;
-
-    let receiver = receiver.unwrap_or(info.sender.clone());
 
     // Transfer native asset to pair contract
     let mut funds: Vec<Coin> = vec![];

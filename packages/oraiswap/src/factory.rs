@@ -27,7 +27,7 @@ pub enum ExecuteMsg {
         asset_infos: [AssetInfo; 2],
         pair_admin: Option<String>,
         operator: Option<String>,
-        provide_liquidity: Option<ProvideLiquidityParams>
+        provide_liquidity: Option<ProvideLiquidityParams>,
     },
     AddPair {
         pair_info: PairInfo,
@@ -39,8 +39,8 @@ pub enum ExecuteMsg {
     },
     ProvideLiquidity {
         assets: [Asset; 2],
-        receiver: Option<Addr>,
-    }
+        receiver: Addr,
+    },
 }
 
 #[cw_serde]
