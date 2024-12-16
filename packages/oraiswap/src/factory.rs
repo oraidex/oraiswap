@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary};
+use cosmwasm_std::{Addr, Binary, Decimal};
 
-use crate::asset::{AssetInfo, PairInfo};
+use crate::asset::{Asset, AssetInfo, PairInfo};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -27,6 +27,7 @@ pub enum ExecuteMsg {
         asset_infos: [AssetInfo; 2],
         pair_admin: Option<String>,
         operator: Option<String>,
+        provide_liquidity: Option<ProvideLiquidityParams>
     },
     AddPair {
         pair_info: PairInfo,
@@ -36,6 +37,10 @@ pub enum ExecuteMsg {
         new_code_id: u64,
         msg: Binary,
     },
+    ProvideLiquidity {
+        assets: [Asset; 2],
+        receiver: Option<Addr>,
+    }
 }
 
 #[cw_serde]
@@ -69,4 +74,11 @@ pub struct MigrateMsg {}
 #[cw_serde]
 pub struct PairsResponse {
     pub pairs: Vec<PairInfo>,
+}
+
+#[cw_serde]
+pub struct ProvideLiquidityParams {
+    pub assets: [Asset; 2],
+    pub slippage_tolerance: Option<Decimal>,
+    pub receiver: Option<Addr>,
 }

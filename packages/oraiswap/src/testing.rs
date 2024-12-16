@@ -143,6 +143,7 @@ impl MockApp {
                         asset_infos: asset_infos.clone(),
                         pair_admin: Some("admin".to_string()),
                         operator: Some("operator".to_string()),
+                        provide_liquidity: None,
                     },
                     &[],
                 )

@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 
 use crate::{
-    asset::{Asset, AssetInfo, PairInfo, PairInfoRaw},
+    asset::{Asset, AssetInfo, PairInfo},
     error::ContractError,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};

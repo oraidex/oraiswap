@@ -4,18 +4,20 @@ use std::convert::TryFrom;
 use cosmwasm_std::entry_point;
 
 use cosmwasm_std::{
-    to_json_binary, Addr, Binary, CanonicalAddr, Deps, DepsMut, Env, MessageInfo, Reply, Response,
-    StdError, StdResult, SubMsg, WasmMsg,
+    to_json_binary, Addr, Binary, CanonicalAddr, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    MessageInfo, Reply, Response, StdError, StdResult, SubMsg, WasmMsg,
 };
+use cw20::Cw20ExecuteMsg;
 use oraiswap::error::ContractError;
 use oraiswap::querier::query_pair_info_from_pair;
 use oraiswap::response::MsgInstantiateContractResponse;
 
 use crate::state::{read_pairs, Config, CONFIG, PAIRS};
 
-use oraiswap::asset::{pair_key, AssetInfo, PairInfo, PairInfoRaw};
+use oraiswap::asset::{self, pair_key, Asset, AssetInfo, PairInfo, PairInfoRaw};
 use oraiswap::factory::{
-    ConfigResponse, ExecuteMsg, InstantiateMsg, MigrateMsg, PairsResponse, QueryMsg,
+    ConfigResponse, ExecuteMsg, InstantiateMsg, MigrateMsg, PairsResponse, ProvideLiquidityParams,
+    QueryMsg,
 };
 use oraiswap::pair::{
     InstantiateMsg as PairInstantiateMsg, DEFAULT_COMMISSION_RATE, DEFAULT_OPERATOR_FEE,
@@ -63,13 +65,26 @@ pub fn execute(
             asset_infos,
             pair_admin,
             operator,
-        } => execute_create_pair(deps, env, info, asset_infos, pair_admin, operator),
+            provide_liquidity,
+        } => execute_create_pair(
+            deps,
+            env,
+            info,
+            asset_infos,
+            pair_admin,
+            operator,
+            provide_liquidity,
+        ),
         ExecuteMsg::AddPair { pair_info } => execute_add_pair_manually(deps, env, info, pair_info),
         ExecuteMsg::MigrateContract {
             contract_addr,
             new_code_id,
             msg,
         } => migrate_pair(deps, env, info, contract_addr, new_code_id, msg),
+        ExecuteMsg::ProvideLiquidity {
+            assets,
+            receiver,
+        } => execute_provide_liquidity(deps, env, info, assets, receiver),
     }
 }
 
@@ -135,10 +150,11 @@ pub fn execute_update_config(
 pub fn execute_create_pair(
     deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     asset_infos: [AssetInfo; 2],
     pair_admin: Option<String>,
     operator: Option<String>,
+    provide_liquidity: Option<ProvideLiquidityParams>,
 ) -> Result<Response, ContractError> {
     let config: Config = CONFIG.load(deps.storage)?;
     let raw_infos = [
@@ -169,6 +185,40 @@ pub fn execute_create_pair(
 
     let operator_addr = operator.map(|op| deps.api.addr_validate(&op)).transpose()?;
 
+    // if provide_liquidity is not None, transfer all cw20 tokens to this contract
+    let mut messages: Vec<CosmosMsg> = vec![];
+
+    if let Some(ProvideLiquidityParams {
+        assets,
+        slippage_tolerance,
+        receiver,
+    }) = provide_liquidity
+    {
+        for asset in &assets {
+            // If the pool is token contract, then we need to execute TransferFrom msg to receive funds
+            if let AssetInfo::Token { contract_addr, .. } = &asset.info {
+                messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: contract_addr.to_owned().into(),
+                    msg: to_json_binary(&Cw20ExecuteMsg::TransferFrom {
+                        owner: info.sender.to_string(),
+                        recipient: env.contract.address.to_string(),
+                        amount: asset.amount,
+                    })?,
+                    funds: vec![],
+                }));
+            }
+        }
+
+        messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: env.contract.address.to_string(),
+            msg: to_json_binary(&ExecuteMsg::ProvideLiquidity {
+                assets,
+                receiver,
+            })?,
+            funds: info.funds,
+        }));
+    }
+
     Ok(Response::new()
         .add_submessage(SubMsg::reply_on_success(
             WasmMsg::Instantiate {
@@ -191,10 +241,11 @@ pub fn execute_create_pair(
         .add_attributes(vec![
             ("action", "create_pair"),
             ("pair", &format!("{}-{}", asset_infos[0], asset_infos[1])),
-        ]))
+        ])
+        .add_messages(messages))
 }
 
-// Anyone can execute it to create swap pair
+// Only owner can execute it
 pub fn execute_add_pair_manually(
     deps: DepsMut,
     _env: Env,
@@ -243,6 +294,61 @@ pub fn execute_add_pair_manually(
             &format!("{}-{}", pair_info.asset_infos[0], pair_info.asset_infos[1]),
         ),
     ]))
+}
+
+pub fn execute_provide_liquidity(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    assets: [Asset; 2],
+    receiver: Option<Addr>,
+) -> Result<Response, ContractError> {
+    let asset_infos = [assets[0].info.clone(), assets[1].info.clone()];
+    let pair_key = pair_key(&asset_infos.map(|a| a.to_raw(deps.api).unwrap()));
+    let pair_raw = PAIRS.load(deps.storage, &pair_key)?;
+    let pair_contract = deps.api.addr_humanize(&pair_raw.contract_addr)?;
+
+    let receiver = receiver.unwrap_or(info.sender.clone());
+
+    // Transfer native asset to pair contract
+    let mut funds: Vec<Coin> = vec![];
+    let mut cw20_msgs: Vec<CosmosMsg> = vec![];
+    for (_i, asset) in assets.iter().enumerate() {
+        match &asset.info {
+            AssetInfo::NativeToken { denom } => {
+                funds.push(Coin {
+                    denom: denom.clone(),
+                    amount: asset.amount,
+                });
+            }
+            AssetInfo::Token { contract_addr, .. } => {
+                cw20_msgs.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: contract_addr.to_owned().into(),
+                    msg: to_json_binary(&Cw20ExecuteMsg::IncreaseAllowance {
+                        spender: pair_contract.to_string(),
+                        amount: asset.amount,
+                        expires: None,
+                    })?,
+                    funds: vec![],
+                }));
+            }
+        }
+    }
+
+    // Execute provide liquidity
+    let provide_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: pair_contract.to_string(),
+        msg: to_json_binary(&oraiswap::pair::ExecuteMsg::ProvideLiquidity {
+            assets,
+            slippage_tolerance: None,
+            receiver: Some(receiver),
+        })?,
+        funds,
+    });
+
+    Ok(Response::new()
+        .add_messages(cw20_msgs)
+        .add_message(provide_msg))
 }
 
 /// This just stores the result for future query
