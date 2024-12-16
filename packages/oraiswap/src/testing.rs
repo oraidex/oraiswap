@@ -1,10 +1,16 @@
-use crate::asset::{AssetInfo, PairInfo, ORAI_DENOM};
+use crate::{
+    asset::{Asset, AssetInfo, PairInfo, ORAI_DENOM},
+    factory::ProvideLiquidityParams,
+};
 use cosmwasm_std::{coin, Addr, Attribute, Coin, Decimal, StdResult, Uint128};
 use derive_more::{Deref, DerefMut};
 use oraiswap_v3::percentage::Percentage;
 
 use crate::pair::{DEFAULT_COMMISSION_RATE, DEFAULT_OPERATOR_FEE};
-use cosmwasm_testing_util::{AppResponse, Code, MockResult};
+use cosmwasm_testing_util::{
+    error::{AnyError, Error},
+    AppResponse, Code, MockResult,
+};
 
 pub const ATOM_DENOM: &str = "ibc/1777D03C5392415FE659F0E8ECB2CE553C6550542A68E4707D5D46949116790B";
 pub const APP_OWNER: &str = "admin";
@@ -125,7 +131,36 @@ impl MockApp {
     }
 
     pub fn create_token(&mut self, token: &str) -> Addr {
-        self.app.create_token(APP_OWNER, token, 0)
+        self.app.create_token(APP_OWNER, token, 0u128)
+    }
+
+    pub fn increase_allowance(
+        &mut self,
+        token: Addr,
+        amount: u128,
+    ) -> Result<AppResponse, AnyError> {
+        self.app.execute(
+            Addr::unchecked(APP_OWNER),
+            token,
+            &cw20::Cw20ExecuteMsg::IncreaseAllowance {
+                spender: self.factory_addr.to_string(),
+                amount: Uint128::from(amount),
+                expires: None,
+            },
+            &[],
+        )
+    }
+
+    pub fn mint_token(&mut self, token: Addr, amount: u128) -> Result<AppResponse, AnyError> {
+        self.app.execute(
+            Addr::unchecked(APP_OWNER),
+            token,
+            &cw20::Cw20ExecuteMsg::Mint {
+                recipient: APP_OWNER.to_string(),
+                amount: Uint128::from(amount),
+            },
+            &[],
+        )
     }
 
     pub fn set_balances(&mut self, balances: &[(&str, &[(&str, u128)])]) {
@@ -143,6 +178,7 @@ impl MockApp {
                         asset_infos: asset_infos.clone(),
                         pair_admin: Some("admin".to_string()),
                         operator: Some("operator".to_string()),
+                        provide_liquidity: None,
                     },
                     &[],
                 )
@@ -156,7 +192,46 @@ impl MockApp {
                 }
             }
         }
+        None
+    }
 
+    pub fn create_pair_add_add_liquidity(&mut self, asset_infos: [AssetInfo; 2]) -> Option<Addr> {
+        if !self.factory_addr.as_str().is_empty() {
+            let contract_addr = self.factory_addr.clone();
+            let res = self
+                .execute(
+                    Addr::unchecked(APP_OWNER),
+                    contract_addr,
+                    &crate::factory::ExecuteMsg::CreatePair {
+                        asset_infos: asset_infos.clone(),
+                        pair_admin: Some("admin".to_string()),
+                        operator: Some("operator".to_string()),
+                        provide_liquidity: Some(ProvideLiquidityParams {
+                            assets: [
+                                Asset {
+                                    info: asset_infos[0].clone(),
+                                    amount: Uint128::from(1000000u128),
+                                },
+                                Asset {
+                                    info: asset_infos[1].clone(),
+                                    amount: Uint128::from(1000000u128),
+                                },
+                            ],
+                            receiver: None,
+                        }),
+                    },
+                    &[],
+                )
+                .unwrap();
+
+            for event in res.events {
+                for attr in event.attributes {
+                    if attr.key.eq("pair_contract_address") {
+                        return Some(Addr::unchecked(attr.value));
+                    }
+                }
+            }
+        }
         None
     }
 

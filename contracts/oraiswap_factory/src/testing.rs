@@ -20,8 +20,15 @@ fn create_pair() {
         ),
     );
 
-    let contract_addr1 = app.create_token("assetA");
-    let contract_addr2 = app.create_token("assetB");
+    let contract_addr1 = app.create_token("assetC");
+    let contract_addr2 = app.create_token("assetD");
+
+    app.mint_token(contract_addr1.clone(), 1000000u128).unwrap();
+    app.mint_token(contract_addr2.clone(), 1000000u128).unwrap();
+    app.increase_allowance(contract_addr1.clone(), 1000000u128)
+        .unwrap();
+    app.increase_allowance(contract_addr2.clone(), 1000000u128)
+        .unwrap();
 
     let asset_infos = [
         AssetInfo::Token {
@@ -33,7 +40,9 @@ fn create_pair() {
     ];
 
     // create pair
-    let contract_addr = app.create_pair(asset_infos.clone()).unwrap();
+    let contract_addr = app
+        .create_pair_add_add_liquidity(asset_infos.clone())
+        .unwrap();
 
     // query pair info
     let pair_info =
