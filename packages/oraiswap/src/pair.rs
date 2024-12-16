@@ -139,6 +139,7 @@ pub struct SimulationResponse {
     pub return_amount: Uint128,
     pub spread_amount: Uint128,
     pub commission_amount: Uint128,
+    #[serde(default)]
     pub operator_fee_amount: Uint128,
 }
 
