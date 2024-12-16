@@ -79,6 +79,5 @@ pub struct PairsResponse {
 #[cw_serde]
 pub struct ProvideLiquidityParams {
     pub assets: [Asset; 2],
-    pub slippage_tolerance: Option<Decimal>,
     pub receiver: Option<Addr>,
 }

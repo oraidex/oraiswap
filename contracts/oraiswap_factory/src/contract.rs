@@ -190,7 +190,6 @@ pub fn execute_create_pair(
 
     if let Some(ProvideLiquidityParams {
         assets,
-        slippage_tolerance,
         receiver,
     }) = provide_liquidity
     {
