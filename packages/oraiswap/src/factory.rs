@@ -68,7 +68,14 @@ pub struct ConfigResponse {
 
 /// We currently take no arguments for migrations
 #[cw_serde]
-pub struct MigrateMsg {}
+pub struct MigrateMsg {
+    pub owner: Addr,
+    pub pair_code_id: u64,
+    pub token_code_id: u64,
+    pub oracle_addr: Addr,
+    pub commission_rate: Option<String>,
+    pub operator_fee: Option<String>,
+}
 
 // We define a custom struct for each query response
 #[cw_serde]
