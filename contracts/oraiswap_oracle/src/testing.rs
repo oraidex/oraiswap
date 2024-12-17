@@ -3,7 +3,7 @@ use cosmwasm_std::{to_json_binary, Addr, BankMsg, Coin, CosmosMsg, Decimal, Uint
 
 use oraiswap::asset::{Asset, AssetInfo, ORAI_DENOM};
 use oraiswap::create_entry_points_testing;
-use oraiswap::oracle::{ExecuteMsg, OracleContract};
+use oraiswap::oracle::{ExecuteMsg, OracleContract, TaxCapResponse};
 use oraiswap::testing::{MockApp, APP_OWNER};
 
 fn setup_contract() -> MockApp {
@@ -83,7 +83,14 @@ fn tax_cap_notfound() {
                 true
             )
         }
-        _ => panic!("DO NOT ENTER HERE"),
+        Ok(res) => {
+            assert_eq!(
+                res,
+                TaxCapResponse {
+                    cap: Uint128::default()
+                }
+            )
+        }
     }
 }
 
