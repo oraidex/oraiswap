@@ -224,8 +224,8 @@ pub fn query_tax_cap(deps: Deps, denom: String) -> StdResult<TaxCapResponse> {
         return Ok(TaxCapResponse { cap });
     }
 
-    Err(StdError::NotFound {
-        kind: format!("Tax cap not found for denom: {}", denom),
+    Ok(TaxCapResponse {
+        cap: Uint128::default(),
     })
 }
 
