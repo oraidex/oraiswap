@@ -432,6 +432,18 @@ pub fn query_pairs(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> StdResult<Response> {
+pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> StdResult<Response> {
+    let config = Config {
+        oracle_addr: deps.api.addr_canonicalize(msg.oracle_addr.as_str())?,
+        owner: deps.api.addr_canonicalize(msg.owner.as_str())?,
+        token_code_id: msg.token_code_id,
+        pair_code_id: msg.pair_code_id,
+        commission_rate: msg
+            .commission_rate
+            .unwrap_or(DEFAULT_COMMISSION_RATE.to_string()),
+        operator_fee: msg.operator_fee.unwrap_or(DEFAULT_OPERATOR_FEE.to_string()),
+    };
+
+    CONFIG.save(deps.storage, &config)?;
     Ok(Response::default())
 }
