@@ -12,6 +12,7 @@ pub struct Config {
     pub token_code_id: u64,
     pub commission_rate: String,
     pub operator_fee: String,
+    pub operator: CanonicalAddr,
 }
 
 // put the length bytes at the first for compatibility with legacy singleton store
@@ -89,6 +90,7 @@ mod test {
                 token_code_id: 1,
                 commission_rate: DEFAULT_COMMISSION_RATE.to_string(),
                 operator_fee: DEFAULT_OPERATOR_FEE.to_string(),
+                operator: deps.api.addr_canonicalize("operator").unwrap(),
             },
         )
         .unwrap();

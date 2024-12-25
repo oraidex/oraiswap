@@ -1,8 +1,9 @@
-use cosmwasm_std::Addr;
+use cosmwasm_std::{to_json_binary, Addr};
 use oraiswap::asset::{AssetInfo, PairInfo};
 
 use oraiswap::create_entry_points_testing;
-use oraiswap::pair::{DEFAULT_COMMISSION_RATE, DEFAULT_OPERATOR_FEE};
+use oraiswap::factory::ConfigResponse;
+use oraiswap::pair::{PairResponse, DEFAULT_COMMISSION_RATE, DEFAULT_OPERATOR_FEE};
 use oraiswap::querier::query_pair_info_from_pair;
 use oraiswap::testing::MockApp;
 
@@ -47,6 +48,24 @@ fn create_pair() {
     // query pair info
     let pair_info =
         query_pair_info_from_pair(&app.as_querier().into_empty(), contract_addr.clone()).unwrap();
+
+    // get config
+    let config: String = app
+        .as_querier()
+        .query_wasm_smart(
+            contract_addr.clone(),
+            &oraiswap::pair::QueryMsg::Operator {},
+        )
+        .unwrap();
+
+    let factory_config: ConfigResponse = app
+        .query(
+            app.factory_addr.clone(),
+            &oraiswap::factory::QueryMsg::Config {},
+        )
+        .unwrap();
+
+    assert_eq!(config, factory_config.operator);
 
     // should never change commission rate once deployed
     let pair_res = app.query_pair(asset_infos.clone()).unwrap();

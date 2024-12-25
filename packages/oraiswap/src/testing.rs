@@ -1,3 +1,5 @@
+use std::ops::Add;
+
 use crate::{
     asset::{Asset, AssetInfo, PairInfo, ORAI_DENOM},
     factory::ProvideLiquidityParams,
@@ -7,10 +9,7 @@ use derive_more::{Deref, DerefMut};
 use oraiswap_v3::percentage::Percentage;
 
 use crate::pair::{DEFAULT_COMMISSION_RATE, DEFAULT_OPERATOR_FEE};
-use cosmwasm_testing_util::{
-    error::{AnyError, Error},
-    AppResponse, Code, MockResult,
-};
+use cosmwasm_testing_util::{error::AnyError, AppResponse, Code, MockResult};
 
 pub const ATOM_DENOM: &str = "ibc/1777D03C5392415FE659F0E8ECB2CE553C6550542A68E4707D5D46949116790B";
 pub const APP_OWNER: &str = "admin";
@@ -100,6 +99,7 @@ impl MockApp {
                     oracle_addr,
                     commission_rate: Some(DEFAULT_COMMISSION_RATE.to_string()),
                     operator_fee: Some(DEFAULT_OPERATOR_FEE.to_string()),
+                    operator: Some(Addr::unchecked("operator").into_string()),
                 },
                 &[],
                 "factory",
