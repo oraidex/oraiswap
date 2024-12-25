@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Decimal};
+use cosmwasm_std::{Addr, Binary};
 
 use crate::asset::{Asset, AssetInfo, PairInfo};
 
@@ -11,6 +11,7 @@ pub struct InstantiateMsg {
     pub oracle_addr: Addr,
     pub commission_rate: Option<String>,
     pub operator_fee: Option<String>,
+    pub operator: Option<String>,
 }
 
 #[cw_serde]
@@ -64,6 +65,9 @@ pub struct ConfigResponse {
     pub oracle_addr: Addr,
     pub pair_code_id: u64,
     pub token_code_id: u64,
+    pub commission_rate: String,
+    pub operator_fee: String,
+    pub operator: Addr,
 }
 
 /// We currently take no arguments for migrations
@@ -75,6 +79,7 @@ pub struct MigrateMsg {
     pub oracle_addr: Addr,
     pub commission_rate: Option<String>,
     pub operator_fee: Option<String>,
+    pub operator: Option<String>,
 }
 
 // We define a custom struct for each query response

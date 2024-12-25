@@ -8,7 +8,7 @@ use oraiswap_v3::percentage::Percentage;
 
 use crate::pair::{DEFAULT_COMMISSION_RATE, DEFAULT_OPERATOR_FEE};
 use cosmwasm_testing_util::{
-    error::{AnyError, Error},
+    error::AnyError,
     AppResponse, Code, MockResult,
 };
 
@@ -100,6 +100,7 @@ impl MockApp {
                     oracle_addr,
                     commission_rate: Some(DEFAULT_COMMISSION_RATE.to_string()),
                     operator_fee: Some(DEFAULT_OPERATOR_FEE.to_string()),
+                    operator: None,
                 },
                 &[],
                 "factory",

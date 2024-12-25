@@ -41,6 +41,9 @@ pub fn instantiate(
             .commission_rate
             .unwrap_or(DEFAULT_COMMISSION_RATE.to_string()),
         operator_fee: msg.operator_fee.unwrap_or(DEFAULT_OPERATOR_FEE.to_string()),
+        operator: deps
+            .api
+            .addr_canonicalize(msg.operator.unwrap_or(info.sender.to_string()).as_str())?,
     };
 
     CONFIG.save(deps.storage, &config)?;
@@ -225,7 +228,7 @@ pub fn execute_create_pair(
                     commission_rate: Some(config.commission_rate),
                     admin: Some(deps.api.addr_validate(&pair_admin)?),
                     operator_fee: Some(config.operator_fee),
-                    operator: operator_addr,
+                    operator: Some(deps.api.addr_humanize(&config.operator)?),
                 })?,
             },
             INSTANTIATE_REPLY_ID,
@@ -397,6 +400,9 @@ pub fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         owner: deps.api.addr_humanize(&state.owner)?,
         token_code_id: state.token_code_id,
         pair_code_id: state.pair_code_id,
+        commission_rate: state.commission_rate,
+        operator_fee: state.operator_fee,
+        operator: deps.api.addr_humanize(&state.operator)?,
     };
 
     Ok(resp)
@@ -433,6 +439,7 @@ pub fn query_pairs(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> StdResult<Response> {
+    let old_config = CONFIG.load(deps.storage)?;
     let config = Config {
         oracle_addr: deps.api.addr_canonicalize(msg.oracle_addr.as_str())?,
         owner: deps.api.addr_canonicalize(msg.owner.as_str())?,
@@ -442,6 +449,11 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> StdResult<Response>
             .commission_rate
             .unwrap_or(DEFAULT_COMMISSION_RATE.to_string()),
         operator_fee: msg.operator_fee.unwrap_or(DEFAULT_OPERATOR_FEE.to_string()),
+        operator: deps.api.addr_canonicalize(
+            msg.operator
+                .unwrap_or(old_config.owner.to_string())
+                .as_str(),
+        )?,
     };
 
     CONFIG.save(deps.storage, &config)?;
