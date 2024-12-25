@@ -79,7 +79,7 @@ pub struct MigrateMsg {
     pub oracle_addr: Addr,
     pub commission_rate: Option<String>,
     pub operator_fee: Option<String>,
-    pub operator: Option<String>,
+    pub operator: String,
 }
 
 // We define a custom struct for each query response
