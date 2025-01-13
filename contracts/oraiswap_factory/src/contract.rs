@@ -12,12 +12,14 @@ use oraiswap::error::ContractError;
 use oraiswap::querier::query_pair_info_from_pair;
 use oraiswap::response::MsgInstantiateContractResponse;
 
-use crate::state::{read_pairs, Config, CONFIG, PAIRS};
+use crate::state::{
+    read_pairs, Config, Creator, RestrictedAssets, CONFIG, CREATOR, PAIRS, RESTRICTED_ASSETS,
+};
 
 use oraiswap::asset::{pair_key, Asset, AssetInfo, PairInfo, PairInfoRaw};
 use oraiswap::factory::{
-    ConfigResponse, ExecuteMsg, InstantiateMsg, MigrateMsg, PairsResponse, ProvideLiquidityParams,
-    QueryMsg,
+    ConfigResponse, CreatorsResponse, ExecuteMsg, InstantiateMsg, MigrateMsg, PairsResponse,
+    ProvideLiquidityParams, QueryMsg, RestrictedAssetResponse,
 };
 use oraiswap::pair::{
     InstantiateMsg as PairInstantiateMsg, DEFAULT_COMMISSION_RATE, DEFAULT_OPERATOR_FEE,
@@ -87,7 +89,69 @@ pub fn execute(
         ExecuteMsg::ProvideLiquidity { assets, receiver } => {
             execute_provide_liquidity(deps, env, info, assets, receiver)
         }
+        ExecuteMsg::RestrictAsset { prefix } => execute_restrict_asset(deps, info, prefix),
+        ExecuteMsg::AddCreator { address } => add_creator(deps, info, address),
+        ExecuteMsg::RemoveCreator { address } => remove_creator(deps, info, address),
     }
+}
+
+pub fn add_creator(
+    deps: DepsMut,
+    info: MessageInfo,
+    address: Addr,
+) -> Result<Response, ContractError> {
+    let config: Config = CONFIG.load(deps.storage)?;
+    // permission check
+    if deps.api.addr_canonicalize(info.sender.as_str())? != config.owner {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let mut creators = CREATOR.may_load(deps.storage)?.unwrap_or(Creator {
+        whitelist_addresses: vec![],
+    });
+    if creators.whitelist_addresses.contains(&address) {
+        return Err(ContractError::CreatorAlreadyExists {});
+    }
+    creators.whitelist_addresses.push(address.clone());
+
+    CREATOR.save(deps.storage, &creators)?;
+
+    let res = Response::new()
+        .add_attribute("method", "add_creator")
+        .add_attribute("creator", address.to_string());
+
+    Ok(res)
+}
+
+pub fn remove_creator(
+    deps: DepsMut,
+    info: MessageInfo,
+    address: Addr,
+) -> Result<Response, ContractError> {
+    let config: Config = CONFIG.load(deps.storage)?;
+    // permission check
+    if deps.api.addr_canonicalize(info.sender.as_str())? != config.owner {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let mut creators = CREATOR.load(deps.storage)?;
+    if let Some(pos) = creators
+        .whitelist_addresses
+        .iter()
+        .position(|x| x == &address)
+    {
+        creators.whitelist_addresses.remove(pos);
+    } else {
+        return Err(ContractError::CreatorNotFound {});
+    }
+
+    CREATOR.save(deps.storage, &creators)?;
+
+    let res = Response::new()
+        .add_attribute("method", "remove_creator")
+        .add_attribute("creator", address.to_string());
+
+    Ok(res)
 }
 
 pub fn migrate_pair(
@@ -155,7 +219,7 @@ pub fn execute_create_pair(
     info: MessageInfo,
     asset_infos: [AssetInfo; 2],
     pair_admin: Option<String>,
-    operator: Option<String>,
+    _operator: Option<String>,
     provide_liquidity: Option<ProvideLiquidityParams>,
 ) -> Result<Response, ContractError> {
     let config: Config = CONFIG.load(deps.storage)?;
@@ -163,6 +227,28 @@ pub fn execute_create_pair(
         asset_infos[0].to_raw(deps.api)?,
         asset_infos[1].to_raw(deps.api)?,
     ];
+
+    let restricted_list = RESTRICTED_ASSETS
+        .may_load(deps.storage)?
+        .unwrap_or(RestrictedAssets { assets: Vec::new() });
+
+    let creators = CREATOR.may_load(deps.storage)?.unwrap_or(Creator {
+        whitelist_addresses: vec![],
+    });
+
+    for asset in asset_infos.as_ref().into_iter() {
+        if let AssetInfo::NativeToken { denom, .. } = &asset {
+            if denom.contains("factory/orai1") {
+                let parts: Vec<&str> = denom.split('/').collect();
+                if parts.len() > 2 && restricted_list.assets.contains(&parts[0..2].join("/")) {
+                    // permission check
+                    if !creators.whitelist_addresses.contains(&info.sender) {
+                        return Err(ContractError::Unauthorized {});
+                    }
+                }
+            }
+        }
+    }
 
     let pair_key = pair_key(&raw_infos);
 
@@ -184,8 +270,6 @@ pub fn execute_create_pair(
         },
     )?;
     let pair_admin = pair_admin.unwrap_or(env.contract.address.to_string());
-
-    let operator_addr = operator.map(|op| deps.api.addr_validate(&op)).transpose()?;
 
     // if provide_liquidity is not None, transfer all cw20 tokens to this contract
     let mut messages: Vec<CosmosMsg> = vec![];
@@ -348,6 +432,35 @@ pub fn execute_provide_liquidity(
         .add_message(provide_msg))
 }
 
+pub fn execute_restrict_asset(
+    deps: DepsMut,
+    info: MessageInfo,
+    prefix: String,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+
+    // permission check
+    if deps.api.addr_canonicalize(info.sender.as_str())? != config.owner {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let mut restrict_list = RESTRICTED_ASSETS
+        .may_load(deps.storage)?
+        .unwrap_or(RestrictedAssets { assets: vec![] });
+    if restrict_list.assets.contains(&prefix) {
+        return Err(ContractError::RestrictPrefixExisted {});
+    }
+    restrict_list.assets.push(prefix.clone());
+
+    RESTRICTED_ASSETS.save(deps.storage, &restrict_list)?;
+
+    let res = Response::new()
+        .add_attribute("method", "restrict_asset")
+        .add_attribute("restrict_asset", prefix.to_string());
+
+    Ok(res)
+}
+
 /// This just stores the result for future query
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
@@ -390,6 +503,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::Pairs { start_after, limit } => {
             to_json_binary(&query_pairs(deps, start_after, limit)?)
         }
+        QueryMsg::RestrictedAssets {} => to_json_binary(&query_restricted_assets(deps)?),
+        QueryMsg::GetCreators {} => to_json_binary(&get_creators(deps)?),
     }
 }
 
@@ -435,6 +550,25 @@ pub fn query_pairs(
     let resp = PairsResponse { pairs };
 
     Ok(resp)
+}
+
+pub fn query_restricted_assets(deps: Deps) -> StdResult<RestrictedAssetResponse> {
+    let restricted_list = RESTRICTED_ASSETS
+        .may_load(deps.storage)?
+        .unwrap_or(RestrictedAssets { assets: Vec::new() });
+
+    Ok(RestrictedAssetResponse {
+        prefixes: restricted_list.assets,
+    })
+}
+
+fn get_creators(deps: Deps) -> StdResult<CreatorsResponse> {
+    let creators = CREATOR.may_load(deps.storage)?.unwrap_or(Creator {
+        whitelist_addresses: vec![],
+    });
+    Ok(CreatorsResponse {
+        creators: creators.whitelist_addresses,
+    })
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
