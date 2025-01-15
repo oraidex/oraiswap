@@ -1,6 +1,6 @@
 use cosmwasm_schema::cw_serde;
 
-use cosmwasm_std::{Api, CanonicalAddr, Order, StdResult, Storage};
+use cosmwasm_std::{Addr, Api, CanonicalAddr, Order, StdResult, Storage};
 use cw_storage_plus::{Bound, Item, Map};
 use oraiswap::asset::{AssetInfoRaw, PairInfo, PairInfoRaw};
 
@@ -15,11 +15,25 @@ pub struct Config {
     pub operator: CanonicalAddr,
 }
 
+#[cw_serde]
+pub struct RestrictedAssets {
+    // token factory contract address (token-bindings), only store the prefix "factory/orai1"
+    pub assets: Vec<String>,
+}
+
+#[cw_serde]
+pub struct Creator {
+    pub whitelist_addresses: Vec<Addr>,
+}
+
 // put the length bytes at the first for compatibility with legacy singleton store
 pub const CONFIG: Item<Config> = Item::new("\u{0}\u{6}config");
 
 // store temporary pair info while waiting for deployment
 pub const PAIRS: Map<&[u8], PairInfoRaw> = Map::new("pairs");
+
+pub const RESTRICTED_ASSETS: Item<RestrictedAssets> = Item::new("restricted_assets");
+pub const CREATOR: Item<Creator> = Item::new("creator");
 
 // settings for pagination
 const MAX_LIMIT: u32 = 30;

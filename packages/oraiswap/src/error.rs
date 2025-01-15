@@ -113,4 +113,13 @@ pub enum ContractError {
 
     #[error("Contract paused")]
     Paused {},
+
+    #[error("Restricted prefix existed")]
+    RestrictPrefixExisted {},
+
+    #[error("Creator is whitelisted already")]
+    CreatorAlreadyExists {},
+
+    #[error("Not found this creator")]
+    CreatorNotFound {}
 }

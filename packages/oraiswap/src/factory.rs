@@ -42,6 +42,15 @@ pub enum ExecuteMsg {
         assets: [Asset; 2],
         receiver: Addr,
     },
+    RestrictAsset {
+        prefix: String,
+    },
+    AddCreator {
+        address: Addr,
+    },
+    RemoveCreator {
+        address: Addr,
+    },
 }
 
 #[cw_serde]
@@ -56,6 +65,10 @@ pub enum QueryMsg {
         start_after: Option<[AssetInfo; 2]>,
         limit: Option<u32>,
     },
+    #[returns(RestrictedAssetResponse)]
+    RestrictedAssets {},
+    #[returns(CreatorsResponse)]
+    GetCreators {},
 }
 
 // We define a custom struct for each query response
@@ -92,4 +105,14 @@ pub struct PairsResponse {
 pub struct ProvideLiquidityParams {
     pub assets: [Asset; 2],
     pub receiver: Option<Addr>,
+}
+
+#[cw_serde]
+pub struct RestrictedAssetResponse {
+    pub prefixes: Vec<String>,
+}
+
+#[cw_serde]
+pub struct CreatorsResponse {
+    pub creators: Vec<Addr>,
 }

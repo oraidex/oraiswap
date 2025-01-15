@@ -1,8 +1,8 @@
-use std::ops::Add;
+use std::{ops::Add, str::FromStr};
 
 use crate::{
     asset::{Asset, AssetInfo, PairInfo, ORAI_DENOM},
-    factory::ProvideLiquidityParams,
+    factory::{CreatorsResponse, ProvideLiquidityParams, RestrictedAssetResponse},
 };
 use cosmwasm_std::{coin, Addr, Attribute, Coin, Decimal, StdResult, Uint128};
 use derive_more::{Deref, DerefMut};
@@ -195,9 +195,64 @@ impl MockApp {
         None
     }
 
+    pub fn create_pair_by(
+        &mut self,
+        asset_infos: [AssetInfo; 2],
+        sender: String,
+    ) -> Result<AppResponse, AnyError> {
+        let contract_addr = self.factory_addr.clone();
+        self.execute(
+            Addr::unchecked(sender),
+            contract_addr,
+            &crate::factory::ExecuteMsg::CreatePair {
+                asset_infos: asset_infos.clone(),
+                pair_admin: Some("admin".to_string()),
+                operator: Some("operator".to_string()),
+                provide_liquidity: None,
+            },
+            &[],
+        )
+    }
+
+    pub fn restrict_asset(&mut self, denom: String) -> Result<AppResponse, AnyError> {
+        let contract_addr = self.factory_addr.clone();
+
+        self.execute(
+            Addr::unchecked(APP_OWNER),
+            contract_addr,
+            &crate::factory::ExecuteMsg::RestrictAsset { prefix: denom },
+            &[],
+        )
+    }
+
+    pub fn add_creator(&mut self, creator: String) -> Result<AppResponse, AnyError> {
+        let contract_addr = self.factory_addr.clone();
+
+        self.execute(
+            Addr::unchecked(APP_OWNER),
+            contract_addr,
+            &crate::factory::ExecuteMsg::AddCreator {
+                address: Addr::unchecked(creator),
+            },
+            &[],
+        )
+    }
+
     pub fn create_pair_add_add_liquidity(&mut self, asset_infos: [AssetInfo; 2]) -> Option<Addr> {
         if !self.factory_addr.as_str().is_empty() {
             let contract_addr = self.factory_addr.clone();
+
+            let mut funds: Vec<Coin> = vec![];
+
+            for asset in asset_infos.as_ref().into_iter() {
+                if let AssetInfo::NativeToken { denom, .. } = &asset {
+                    funds.push(Coin {
+                        denom: denom.clone(),
+                        amount: Uint128::from(1000000u128),
+                    });
+                }
+            }
+
             let res = self
                 .execute(
                     Addr::unchecked(APP_OWNER),
@@ -220,7 +275,7 @@ impl MockApp {
                             receiver: None,
                         }),
                     },
-                    &[],
+                    &funds,
                 )
                 .unwrap();
 
@@ -264,6 +319,30 @@ impl MockApp {
             return self.app.as_querier().query_wasm_smart(
                 self.factory_addr.clone(),
                 &crate::factory::QueryMsg::Pair { asset_infos },
+            );
+        }
+        Err(cosmwasm_std::StdError::NotFound {
+            kind: "Pair".into(),
+        })
+    }
+
+    pub fn query_creators(&self) -> StdResult<CreatorsResponse> {
+        if !self.factory_addr.as_str().is_empty() {
+            return self.app.as_querier().query_wasm_smart(
+                self.factory_addr.clone(),
+                &crate::factory::QueryMsg::GetCreators {},
+            );
+        }
+        Err(cosmwasm_std::StdError::NotFound {
+            kind: "Pair".into(),
+        })
+    }
+
+    pub fn query_restrict_denom(&self) -> StdResult<RestrictedAssetResponse> {
+        if !self.factory_addr.as_str().is_empty() {
+            return self.app.as_querier().query_wasm_smart(
+                self.factory_addr.clone(),
+                &crate::factory::QueryMsg::RestrictedAssets {},
             );
         }
         Err(cosmwasm_std::StdError::NotFound {
