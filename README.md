@@ -1,51 +1,19 @@
 # OraiSwap
 
-Uniswap-inspired automated market-maker (AMM) protocol powered by Smart Contracts on the [Orai](https://orai.io) blockchain.
+Uniswap-inspired automated market-maker (AMM) protocol powered by Smart Contracts on the [Oraichain](https://orai.io) mainnet.
 
 ## Contracts
 
-| Name                                                 | Description                                              |
-| ---------------------------------------------------- | -------------------------------------------------------- |
-| [`oraiswap_factory`](contracts/oraiswap_factory)     | Proxy contract to create oraiswap_pair instance          |
-| [`oraiswap_oracle`](contracts/oraiswap_oracle)       | Global parameters updated by multisig wallet             |
-| [`oraiswap_pair`](contracts/oraiswap_pair)           | Logic for building liquidity pool and trade between pair |
-| [`oraiswap_router`](contracts/oraiswap_router)       | Facilitate multi-hop swap operations                     |
-| [`oraiswap_orderbook`](contracts/oraiswap_orderbook) | Orderbook implementation                                 |
-| [`oraiswap_staking`](contracts/oraiswap_staking)     | Stake LPs to get ORAIX reward                            |
-| [`oraiswap_token`](contracts/oraiswap_token)         | (ERC20 equivalent) token implementation, AIRI, ORAIX     |
-| [`oraiswap_mixed_router`](contracts/oraiswap_mixedrouter)         | Facilitate multi-hop swap operations between v2 & v3     |
-
-- oraiswap_factory
-
-  Mainnet: [`orai167r4ut7avvgpp3rlzksz6vw5spmykluzagvmj3ht845fjschwugqjsqhst`](https://scan.orai.io/smart-contract/orai167r4ut7avvgpp3rlzksz6vw5spmykluzagvmj3ht845fjschwugqjsqhst)
-
-- oraiswap_oracle
-
-  Mainnet: [`orai18rgtdvlrev60plvucw2rz8nmj8pau9gst4q07m`](https://scan.orai.io/smart-contract/orai18rgtdvlrev60plvucw2rz8nmj8pau9gst4q07m)
-
-- oraiswap_pair
-
-  Mainnet (CodeID): 1502
-
-- oraiswap_route
-
-  Mainnet: [`orai1j0r67r9k8t34pnhy00x3ftuxuwg0r6r4p8p6rrc8az0ednzr8y9s3sj2sf`](https://scan.orai.io/smart-contract/orai1j0r67r9k8t34pnhy00x3ftuxuwg0r6r4p8p6rrc8az0ednzr8y9s3sj2sf)
-
-- oraiswap_orderbook
-
-  Mainnet: [`orai1nt58gcu4e63v7k55phnr3gaym9tvk3q4apqzqccjuwppgjuyjy6sxk8yzp`](https://scan.orai.io/smart-contract/orai1nt58gcu4e63v7k55phnr3gaym9tvk3q4apqzqccjuwppgjuyjy6sxk8yzp)
-
-- oraiswap_staking
-
-  Mainnet: [`orai19p43y0tqnr5qlhfwnxft2u5unph5yn60y7tuvu`](https://scan.orai.io/smart-contract/orai19p43y0tqnr5qlhfwnxft2u5unph5yn60y7tuvu)
-
-- oraiswap_token
-
-  Mainnet (CodeID): 582
-
-- oraiswap_mixed_router
-
-  Mainnet: [`orai1cy2pc5czxm5qlacp6j0hfq7qj9wh8zuhxgpdartcfrdljknq0arsuc4znj`](https://scan.orai.io/smart-contract/orai1cy2pc5czxm5qlacp6j0hfq7qj9wh8zuhxgpdartcfrdljknq0arsuc4znj)
+| Name                                                      | Description                                              |
+| --------------------------------------------------------- | -------------------------------------------------------- |
+| [`oraiswap_factory`](contracts/oraiswap_factory)          | Proxy contract to create oraiswap_pair instance          |
+| [`oraiswap_oracle`](contracts/oraiswap_oracle)            | Global parameters updated by multisig wallet             |
+| [`oraiswap_pair`](contracts/oraiswap_pair)                | Logic for building liquidity pool and trade between pair |
+| [`oraiswap_router`](contracts/oraiswap_router)            | Facilitate multi-hop swap operations                     |
+| [`oraiswap_orderbook`](contracts/oraiswap_orderbook)      | Orderbook implementation                                 |
+| [`oraiswap_staking`](contracts/oraiswap_staking)          | Stake LPs to get ORAIX reward                            |
+| [`oraiswap_token`](contracts/oraiswap_token)              | (ERC20 equivalent) token implementation, AIRI, ORAIX     |
+| [`oraiswap_mixed_router`](contracts/oraiswap_mixedrouter) | Facilitate multi-hop swap operations between v2 & v3     |
 
 ## Running this contract
 
@@ -59,8 +27,44 @@ rustup target add wasm32-unknown-unknown
 You can run unit tests on this on each contracts directory via :
 
 ```bash
-cargo unit-test
-cargo integration-test
+cargo test
+```
+
+## Build the contracts
+
+### Prerequisites
+
+- [CosmWasm tools](https://docs.orai.io/developer-guides/cosmwasm-contract/compile-contract#install-cosmwasm-tools)
+
+### Build commands
+
+Build contracts:
+
+```bash
+cwtools build contracts/*
+
+# specify the build destination
+cwtools build contracts/* -o contract-builds/
+
+# hot-reload auto build after modifying the code
+cwtools build contracts/* -w
+
+# build schema. -s is for schema
+cwtools build ../tonbridge-cw-contracts/contracts/* -s
+# gen typescript codes. -o here is the output directory
+cwtools gents ../tonbridge-cw-contracts/contracts/* -o packages/contracts-sdk/src
+```
+
+Build schemas:
+
+```bash
+cwtools build contracts/* -s
+```
+
+Build typescript gen:
+
+```bash
+cwtools gents contracts/* -o contract-typescript-gen/
 ```
 
 ## Gen proto definitions
