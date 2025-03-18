@@ -79,6 +79,11 @@ pub enum ExecuteMsg {
     UpdateOperator {
         operator: Option<String>,
     },
+    // withdraw fund
+    WithdrawFund {
+        asset: Asset,
+        to: Option<Addr>,
+    },
 }
 
 #[cw_serde]

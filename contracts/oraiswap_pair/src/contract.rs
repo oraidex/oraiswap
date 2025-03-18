@@ -156,7 +156,23 @@ pub fn execute(
             operator_fee,
         } => execute_update_pool_info(deps, info, commission_rate, operator_fee),
         ExecuteMsg::UpdateOperator { operator } => execute_update_operator(deps, info, operator),
+        ExecuteMsg::WithdrawFund { asset, to } => execute_withdraw_fund(deps, info, asset, to),
     }
+}
+
+fn execute_withdraw_fund(
+    deps: DepsMut,
+    info: MessageInfo,
+    asset: Asset,
+    to: Option<Addr>,
+) -> Result<Response, ContractError> {
+    assert_admin(deps.as_ref(), info.sender.to_string())?;
+
+    let receiver = to.unwrap_or(info.sender);
+
+    let msg = asset.into_msg(None, &deps.querier, receiver)?;
+
+    Ok(Response::new().add_message(msg))
 }
 
 pub fn receive_cw20(
