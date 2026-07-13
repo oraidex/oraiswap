@@ -490,7 +490,7 @@ pub fn query_old_store(deps: Deps, old_store_type: OldStoreType) -> StdResult<Bi
 // migrate contract
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> StdResult<Response> {
-    store_finish_migrate_store_status(deps.storage, false)?;
+    // store_finish_migrate_store_status(deps.storage, false)?;
     Ok(Response::default())
 }
 
