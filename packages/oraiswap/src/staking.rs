@@ -44,6 +44,11 @@ pub enum ExecuteMsg {
     DepositReward {
         rewards: Vec<RewardMsg>,
     },
+    /// Owner can withdraw funds (native or CW20) held by the contract
+    WithdrawFunds {
+        assets: Vec<Asset>,
+        receiver: Option<Addr>,
+    },
 
     ////////////////////////
     /// User operations ///

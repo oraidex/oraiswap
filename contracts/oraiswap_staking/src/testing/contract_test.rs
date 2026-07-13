@@ -102,6 +102,94 @@ fn update_config() {
 }
 
 #[test]
+fn test_withdraw_funds() {
+    const ATOM_DENOM: &str = "uatom";
+    let mut deps = mock_dependencies_with_balance(&[
+        coin(10000000000u128, ORAI_DENOM),
+        coin(20000000000u128, ATOM_DENOM),
+    ]);
+
+    let msg = InstantiateMsg {
+        owner: Some(Addr::unchecked("owner")),
+        rewarder: Addr::unchecked("reward"),
+        minter: Some(Addr::unchecked("mint")),
+        oracle_addr: Addr::unchecked("oracle"),
+        factory_addr: Addr::unchecked("factory"),
+        base_denom: None,
+    };
+
+    let info = mock_info("addr", &[]);
+    let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    let msg = ExecuteMsg::WithdrawFunds {
+        assets: vec![
+            Asset {
+                info: AssetInfo::NativeToken {
+                    denom: ORAI_DENOM.into(),
+                },
+                amount: Uint128::from(10000000000u128),
+            },
+            Asset {
+                info: AssetInfo::NativeToken {
+                    denom: ATOM_DENOM.into(),
+                },
+                amount: Uint128::from(20000000000u128),
+            },
+        ],
+        receiver: None,
+    };
+
+    let info = mock_info("owner", &[]);
+    let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
+
+    assert_eq!(res.messages.len(), 2);
+    assert_eq!(
+        res.attributes,
+        vec![
+            attr("action", "withdraw_funds"),
+            attr("receiver", "owner"),
+        ]
+    );
+
+    let msg = ExecuteMsg::WithdrawFunds {
+        assets: vec![Asset {
+            info: AssetInfo::NativeToken {
+                denom: ORAI_DENOM.into(),
+            },
+            amount: Uint128::from(1u128),
+        }],
+        receiver: Some(Addr::unchecked("receiver")),
+    };
+
+    let info = mock_info("addr", &[]);
+    let res = execute(deps.as_mut(), mock_env(), info, msg);
+    match res {
+        Err(StdError::GenericErr { msg, .. }) => assert_eq!(msg, "unauthorized"),
+        _ => panic!("Must return unauthorized error"),
+    }
+
+    let msg = ExecuteMsg::WithdrawFunds {
+        assets: vec![Asset {
+            info: AssetInfo::NativeToken {
+                denom: ATOM_DENOM.into(),
+            },
+            amount: Uint128::from(1u128),
+        }],
+        receiver: Some(Addr::unchecked("receiver")),
+    };
+
+    let info = mock_info("owner", &[]);
+    let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+    assert_eq!(
+        res.attributes,
+        vec![
+            attr("action", "withdraw_funds"),
+            attr("receiver", "receiver"),
+        ]
+    );
+}
+
+#[test]
 fn test_register() {
     let mut deps = mock_dependencies();
 

@@ -19,8 +19,8 @@ use crate::state::{
 };
 
 use cosmwasm_std::{
-    from_json, to_json_binary, Addr, Api, Binary, CanonicalAddr, Decimal, Deps, DepsMut, Env,
-    MessageInfo, Order, Response, StdError, StdResult, Storage, Uint128,
+    from_json, to_json_binary, Addr, Api, Binary, CanonicalAddr, CosmosMsg, Decimal, Deps, DepsMut,
+    Env, MessageInfo, Order, Response, StdError, StdResult, Storage, Uint128,
 };
 use oraiswap::asset::{Asset, ORAI_DENOM};
 use oraiswap::staking::{
@@ -70,6 +70,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             assets,
         } => update_rewards_per_sec(deps, info, staking_token, assets),
         ExecuteMsg::DepositReward { rewards } => deposit_reward(deps, info, rewards),
+        ExecuteMsg::WithdrawFunds { assets, receiver } => {
+            withdraw_funds(deps, env, info, assets, receiver)
+        }
         ExecuteMsg::RegisterAsset { staking_token } => register_asset(deps, info, staking_token),
         ExecuteMsg::DeprecateStakingToken {
             staking_token,
@@ -166,6 +169,43 @@ pub fn update_config(
 
     store_config(deps.storage, &config)?;
     Ok(Response::new().add_attribute("action", "update_config"))
+}
+
+fn withdraw_funds(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    assets: Vec<Asset>,
+    receiver: Option<Addr>,
+) -> StdResult<Response> {
+    validate_migrate_store_status(deps.storage)?;
+    let config = read_config(deps.storage)?;
+
+    if deps.api.addr_canonicalize(info.sender.as_str())? != config.owner {
+        return Err(StdError::generic_err("unauthorized"));
+    }
+
+    let owner = deps.api.addr_humanize(&config.owner)?;
+    let recipient = receiver.unwrap_or(owner);
+    let mut messages: Vec<CosmosMsg> = vec![];
+
+    for asset in assets {
+        let balance = asset
+            .info
+            .query_pool(&deps.querier, env.contract.address.clone())?;
+        if asset.amount > balance {
+            return Err(StdError::generic_err(format!(
+                "insufficient balance for {}",
+                asset.info
+            )));
+        }
+        messages.push(asset.into_msg(None, &deps.querier, recipient.clone())?);
+    }
+
+    Ok(Response::new().add_messages(messages).add_attributes([
+        ("action", "withdraw_funds"),
+        ("receiver", recipient.as_str()),
+    ]))
 }
 
 // need to withdraw all rewards of the stakers belong to the pool
