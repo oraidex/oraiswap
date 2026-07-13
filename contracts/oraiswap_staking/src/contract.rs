@@ -178,7 +178,6 @@ fn withdraw_funds(
     assets: Vec<Asset>,
     receiver: Option<Addr>,
 ) -> StdResult<Response> {
-    validate_migrate_store_status(deps.storage)?;
     let config = read_config(deps.storage)?;
 
     if deps.api.addr_canonicalize(info.sender.as_str())? != config.owner {
